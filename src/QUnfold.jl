@@ -1,63 +1,52 @@
 module QUnfold
 
-using JuMP, LinearAlgebra, StatsBase
-import Ipopt
+using LinearAlgebra, StatsBase
 
-export ACC, fit
+export fit, predict, ACC, PACC
 
+include("transformers.jl")
+include("solvers.jl")
 
 
 # general API
 
-abstract type Method end
+abstract type AbstractMethod end
 
-abstract type Transformer end
-
-struct Fitted{T <: Method}
-    method::T
+struct FittedMethod{S<:AbstractMethod, T<:FittedTransformer}
+    method::S
     M::Matrix{Float64}
-    f::Transformer
+    f::T
 end
 
 """
-    __fit_transform__(m, X, y) -> (f, i_M)
+    _transformer(m)
 
-Fit the transformer `f` of the method `m` and return the indices of the training set `(X, y)`
-which can be used for computing the transfer matrix `M`.
+Return the transformer of the QUnfold method `m`.
 """
-__fit_transform__(m::Method, X::Any, y::AbstractVector{T}) where {T <: Integer} =
-    error("__fit_transform__ not implemented for $(typeof(m))")
-
-"""
-__transform__(f, X) -> f(X)
-
-Transform the data set `X` with the transformer `f`.
-"""
-__transform__(f::Transformer, X::Any) =
-    error("__transform__ not implemented for $(typeof(f))")
+_transformer(m::AbstractMethod) =
+    error("_transformer not implemented for $(typeof(m))")
 
 """
-    __solve__(m, M, q)
+    _solve(m, M, q)
 
 Solve the optimization task defined by the transfer matrix `M` and the observed
 histogram `q` with the QUnfold method `m`.
 """
-__solve__(m::Method, M::Matrix{Float64}, q::Vector{Float64}) =
-    error("__solve__ not implemented for $(typeof(m))")
+_solve(m::AbstractMethod, M::Matrix{Float64}, q::Vector{Float64}) =
+    error("_solve not implemented for $(typeof(m))")
 
 """
-    fit(m, X, y) -> Fitted
+    fit(m, X, y) -> FittedMethod
 
 Return a copy of the QUnfold method `m` that is fitted to the data set `(X, y)`.
 """
-function fit(m::Method, X::Any, y::AbstractVector{T}) where {T <: Integer}
-    f, i_M = __fit_transform__(m, X, y) # f(x) for x ∈ X
-    fX = __transform__(f, X[i_M, :])
-    fy = y[i_M]
-    # C = length(unique(y)) # number of classes
-    # F = C # number of transformed features
-    M = zeros(C, C) # TODO from fX and fy
-    return Fitted(m, M, f)
+function fit(m::AbstractMethod, X::Any, y::AbstractVector{T}) where {T <: Integer}
+    f, fX, fy = _fit_transform(_transformer(m), X, y) # f(x) for x ∈ X
+    M = zeros(length(unique(y)), size(fX, 2)) # (n_classes, n_features)
+    for (fX_i, fy_i) in zip(eachrow(fX), fy)
+        M[fy_i, :] .+= fX_i # one histogram of f(X) per class
+    end
+    return FittedMethod(m, M ./ sum(M; dims=2), f) # normalize M
 end
 
 """
@@ -65,76 +54,32 @@ end
 
 Predict the class prevalences in the data set `X` with the fitted method `m`.
 """
-predict(m::Fitted, X::Any) =
-    __solve__(m.method, m.M, mean(__transform__(m.f, X), dims=1))
+predict(m::FittedMethod, X::Any) =
+    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:])
 
 
+# classification-based least squares methods: ACC, PACC
 
-# Classifier-based least squares methods: ACC, PACC
-
-struct ACC <: Method
+struct _ACC <: AbstractMethod
     classifier::Any
-    val_split::Float64
     strategy::Symbol # ∈ {:softmax, :constrained}
-    ACC(c::Any; val_split::Float64=.334, strategy::Symbol=:constrained) =
-        new(c; val_split=val_split, strategy=strategy)
-end
-
-struct PACC <: Method
-    classifier::Any
-    val_split::Float64
-    strategy::Symbol # ∈ {:softmax, :constrained}
-    PACC(c::Any; val_split::Float64=.334, strategy::Symbol=:constrained) =
-        new(c; val_split=val_split, strategy=strategy)
-end
-
-struct Classification <: Transformer
-    classifier::Any
     is_probabilistic::Bool
 end
-Classification(m::ACC) = Classification(m.classifier, false)
-Classification(m::PACC) = Classification(m.classifier, true)
+ACC(c::Any; strategy::Symbol=:constrained) = _ACC(c, strategy, false)
+PACC(c::Any; strategy::Symbol=:constrained) = _ACC(c, strategy, true)
 
-function __fit_transform__(m::Union{ACC,PACC}, X::Any, y::AbstractVector{T}) where {T <: Integer}
-    # TODO sample i_trn, i_tst
-    fit!(m.classifier, X[i_trn, :], y[i_trn])
-    return Classification(m), i_tst # = (f, i_M)
-end
+_transformer(m::_ACC) = ClassTransformer(m.classifier, m.is_probabilistic)
 
-__transform__(f::Classification, X::Any) =
-    if f.is_probabilistic
-        return predict(f.classifier, X) # TODO one-hot encoding
+_solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}) =
+    if m.strategy ∈ [:constrained, :softmax]
+        solve_least_squares(M, q, m.strategy)
+    elseif m.strategy == :pinv
+        pinv(M) * q
+    elseif m.strategy == :inv
+        inv(M) * q
     else
-        return predict_proba(f.classifier, X)
+        error("There is no strategy \"$(m.strategy)\"")
     end
-
-__solve__(m::Union{ACC,PACC,ReadMe}, M::Matrix{Float64}, q::Vector{Float64}) =
-    solve_least_squares(M, q, m.strategy)
-
-function solve_least_squares(M::Matrix, q::Vector{Float64}, strategy::Symbol)
-    return inv(M) * q # TODO surround with try-catch
-    model = Model(Ipopt.Optimizer)
-
-    # least squares ||q - M*p||_2^2
-    if strategy == :softmax
-        @variable(model, l[1:C]) # latent variables (unconstrained)
-        @NLexpression(model, p[i = 1:C], exp(l[i]) / sum(exp(l[j]) for j in 1:C)) # p = softmax(l)
-        @NLobjective(model, Min, sum((q[i] - sum(M[i, j] * p[j] for j in 1:C))^2 for i in 1:F))
-    elseif strategy == :constrained
-        @variable(model, p[1:C] ≥ 0) # p_i ≥ 0
-        @constraint(model, ones(C)' * p == 1) # 1' * p = 1
-        @objective(model, Min, (q - M * p)' * (q - M * p))
-    end
-
-    optimize!(model) # TODO check for convergence
-
-    if strategy == :softmax
-        return exp.(value.(l)) ./ sum(exp.(value.(l)))
-    elseif strategy == :constrained
-        return value.(p)
-    end
-end
-
 
 
 end # module
