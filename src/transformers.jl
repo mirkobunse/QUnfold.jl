@@ -1,10 +1,10 @@
 import ScikitLearnBase
 
-abstract type AbstractTransformer end
-abstract type FittedTransformer end
-
 
 # general API
+
+abstract type AbstractTransformer end
+abstract type FittedTransformer end
 
 """
     _fit_transform(t, X, y) -> (f, fX, fy)
@@ -25,11 +25,21 @@ _transform(f::FittedTransformer, X::Any) =
     error("_transform not implemented for $(typeof(f))")
 
 
+# utility methods
+
+"""
+    onehot_encoding(y[, classes])
+
+Map an array of labels / crisp predictions `y` to a one-hot encoded indicator matrix.
+"""
+onehot_encoding(y, classes=unique(y)) = permutedims(classes) .== y
+
 # classification-based feature transformation
 
 struct ClassTransformer <: AbstractTransformer
     classifier::Any
     is_probabilistic::Bool
+    fit_classifier::Bool
 end
 
 struct FittedClassTransformer <: FittedTransformer
@@ -38,16 +48,21 @@ struct FittedClassTransformer <: FittedTransformer
 end
 
 function _fit_transform(t::ClassTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
-    classifier = ScikitLearnBase.clone(t.classifier)
+    classifier = t.classifier
     if !hasproperty(classifier, :oob_score) || !classifier.oob_score
         error("Only bagging classifiers with oob_score=true are supported")
     end # TODO add support for non-bagging classifiers
-    ScikitLearnBase.fit!(classifier, X, y)
+    if t.fit_classifier
+        classifier = ScikitLearnBase.clone(classifier)
+        ScikitLearnBase.fit!(classifier, X, y)
+    end
     fX = if t.is_probabilistic
         classifier.oob_decision_function_
     else
-        y_pred = mapslices(argmax, classifier.oob_decision_function_; dims=2)[:]
-        permutedims(ScikitLearnBase.get_classes(classifier)) .== y_pred # one-hot encoding
+        onehot_encoding(
+            mapslices(argmax, classifier.oob_decision_function_; dims=2)[:], # y_pred
+            ScikitLearnBase.get_classes(classifier)
+        )
     end
     return FittedClassTransformer(classifier, t.is_probabilistic), fX, y
 end
@@ -56,6 +71,8 @@ _transform(f::FittedClassTransformer, X::Any) =
     if f.is_probabilistic
         ScikitLearnBase.predict_proba(f.classifier, X)
     else
-        y_pred = ScikitLearnBase.predict(f.classifier, X)
-        permutedims(ScikitLearnBase.get_classes(f.classifier)) .== y_pred # one-hot encoding
+        onehot_encoding(
+            ScikitLearnBase.predict(f.classifier, X),
+            ScikitLearnBase.get_classes(f.classifier)
+        )
     end

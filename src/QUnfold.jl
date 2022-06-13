@@ -2,7 +2,7 @@ module QUnfold
 
 using LinearAlgebra, StatsBase
 
-export fit, predict, ACC, PACC
+export fit, predict, ACC, CC, PACC, PCC
 
 include("transformers.jl")
 include("solvers.jl")
@@ -58,17 +58,24 @@ predict(m::FittedMethod, X::Any) =
     _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:])
 
 
-# classification-based least squares methods: ACC, PACC
+# classification-based least squares and un-adjusted methods: ACC, PACC, CC, PCC
 
 struct _ACC <: AbstractMethod
     classifier::Any
-    strategy::Symbol # ∈ {:softmax, :constrained}
+    strategy::Symbol # ∈ {:constrained, :softmax, :pinv, :inv, :none}
     is_probabilistic::Bool
+    fit_classifier::Bool
 end
-ACC(c::Any; strategy::Symbol=:constrained) = _ACC(c, strategy, false)
-PACC(c::Any; strategy::Symbol=:constrained) = _ACC(c, strategy, true)
+ACC(c::Any; strategy::Symbol=:constrained, fit_classifier::Bool=true) =
+    _ACC(c, strategy, false, fit_classifier)
+PACC(c::Any; strategy::Symbol=:constrained, fit_classifier::Bool=true) =
+    _ACC(c, strategy, true, fit_classifier)
+CC(c::Any; fit_classifier::Bool=true) =
+    _ACC(c, :none, false, fit_classifier)
+PCC(c::Any; fit_classifier::Bool=true) =
+    _ACC(c, :none, true, fit_classifier)
 
-_transformer(m::_ACC) = ClassTransformer(m.classifier, m.is_probabilistic)
+_transformer(m::_ACC) = ClassTransformer(m.classifier, m.is_probabilistic, m.fit_classifier)
 
 _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}) =
     if m.strategy ∈ [:constrained, :softmax]
@@ -77,6 +84,8 @@ _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}) =
         pinv(M) * q
     elseif m.strategy == :inv
         inv(M) * q
+    elseif m.strategy == :none
+        q
     else
         error("There is no strategy \"$(m.strategy)\"")
     end

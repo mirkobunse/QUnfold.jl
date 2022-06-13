@@ -1,8 +1,9 @@
 using JuMP
-import Ipopt
+import Ipopt, MathOptInterface.TerminationStatusCode
 
 function solve_least_squares(M::Matrix, q::Vector{Float64}, strategy::Symbol)
     model = Model(Ipopt.Optimizer)
+    set_silent(model)
     C, F = size(M) # the numbers of classes and features
 
     # least squares ||q - M*p||_2^2
@@ -16,7 +17,10 @@ function solve_least_squares(M::Matrix, q::Vector{Float64}, strategy::Symbol)
         @objective(model, Min, (q - M * p)' * (q - M * p))
     end
 
-    optimize!(model) # TODO check for convergence
+    optimize!(model)
+    if termination_status(model) ∉ [LOCALLY_SOLVED, OPTIMAL]
+        error("Non-optimal status after optimization: $(termination_status(model))")
+    end
 
     if strategy == :softmax
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
