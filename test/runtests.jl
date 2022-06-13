@@ -22,6 +22,68 @@ function generate_data(p, M; n_samples=1000)
     return X, y
 end
 
+py"""
+import numpy as np
+from sklearn.metrics import confusion_matrix
+
+# https://github.com/HLT-ISTI/QuaPy/blob/6a5c528154c2d6d38d9f3258e667727bf692fc8b/quapy/method/aggregative.py#L319
+def accPteCondEstim(classes, y, y_):
+    conf = confusion_matrix(y, y_, labels=classes).T
+    conf = conf.astype(np.float)
+    class_counts = conf.sum(axis=0)
+    for i, _ in enumerate(classes):
+        if class_counts[i] == 0:
+            conf[i, i] = 1
+        else:
+            conf[:, i] /= class_counts[i]
+    return conf
+
+# https://github.com/HLT-ISTI/QuaPy/blob/6a5c528154c2d6d38d9f3258e667727bf692fc8b/quapy/method/aggregative.py#L450
+def paccPteCondEstim(classes, y, y_):
+    confusion = np.eye(len(classes))
+    for i, class_ in enumerate(classes):
+        idx = y == class_
+        if idx.any():
+            confusion[i] = y_[idx].mean(axis=0)
+    return confusion.T
+"""
+
+@testset "Transfer matrix estimation" begin
+    M_true = diagm(
+        0 => rand(3) * .7 .+ .1,
+        1 => rand(2) * .05 .+ .025,
+        -1 => rand(2) * .05 .+ .025,
+        2 => rand(1) * .025,
+        -2 => rand(1) * .025
+    )
+    M_true ./= sum(M_true, dims=2)
+    X_trn, y_trn = generate_data([1, 2, 3], M_true)
+    c = RandomForestClassifier(; oob_score=true, random_state=rand(UInt32))
+    ScikitLearn.fit!(c, X_trn, y_trn)
+    y_oob = mapslices(argmax, c.oob_decision_function_; dims=2)[:]
+    @info "OOB predictions" mean(y_trn .== y_oob)
+
+    acc = ACC(c; fit_classifier=false)
+    _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(acc), X_trn, y_trn)
+    M_acc = zeros(size(fX, 2), 3)
+    for (fX_i, fy_i) in zip(eachrow(fX), fy)
+        M_acc[:, fy_i] .+= fX_i
+    end
+    M_acc ./= sum(M_acc; dims=1)
+    M_acc_quapy = py"accPteCondEstim"(1:3, y_trn, y_oob)
+    @info "M_acc" M_acc M_acc_quapy
+
+    pacc = PACC(c; fit_classifier=false)
+    _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(pacc), X_trn, y_trn)
+    M_pacc = zeros(size(fX, 2), 3)
+    for (fX_i, fy_i) in zip(eachrow(fX), fy)
+        M_pacc[:, fy_i] .+= fX_i
+    end
+    M_pacc ./= sum(M_pacc; dims=1)
+    M_pacc_quapy = py"paccPteCondEstim"(1:3, y_trn, c.oob_decision_function_)
+    @info "M_pacc" M_pacc M_pacc_quapy
+end # testset
+
 @testset "ACC / PACC" begin
     M = diagm(
         0 => rand(3) * .7 .+ .1,

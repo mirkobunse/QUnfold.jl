@@ -42,11 +42,11 @@ Return a copy of the QUnfold method `m` that is fitted to the data set `(X, y)`.
 """
 function fit(m::AbstractMethod, X::Any, y::AbstractVector{T}) where {T <: Integer}
     f, fX, fy = _fit_transform(_transformer(m), X, y) # f(x) for x ∈ X
-    M = zeros(length(unique(y)), size(fX, 2)) # (n_classes, n_features)
+    M = zeros(size(fX, 2), length(unique(y))) # (n_features, n_classes)
     for (fX_i, fy_i) in zip(eachrow(fX), fy)
-        M[fy_i, :] .+= fX_i # one histogram of f(X) per class
+        M[:, fy_i] .+= fX_i # one histogram of f(X) per class
     end
-    return FittedMethod(m, M ./ sum(M; dims=2), f) # normalize M
+    return FittedMethod(m, M ./ sum(M; dims=1), f) # normalize M
 end
 
 """
