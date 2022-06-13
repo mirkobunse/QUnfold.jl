@@ -97,26 +97,6 @@ def paccPteCondEstim(classes, y, y_):
 
 function QUnfold.fit(m::_QuaPyACC, X::Any, y::AbstractVector{T}) where {T <: Integer}
     if m.oob_score # custom ACC/PACC.fit with OOB decision function
-        # transformer = QUnfold.ClassTransformer(m.classifier, m.is_probabilistic, m.fit_classifier)
-        # f, fX, fy = QUnfold._fit_transform(transformer, X, y) # f(x) for x ∈ X
-        # M = zeros(length(unique(y)), size(fX, 2)) # (n_classes, n_features)
-        # for (fX_i, fy_i) in zip(eachrow(fX), fy)
-        #     M[fy_i, :] .+= fX_i # one histogram of f(X) per class
-        # end
-        # M ./= sum(M; dims=2)
-        # classifier = transformer.classifier
-        # if m.is_probabilistic
-        #     quantifier = QuaPy.Methods.PACC(classifier)
-        #     quantifier.__object.pcc = QuaPy.__QUAPY.method.aggregative.PCC(classifier)
-        #     quantifier.__object.Pte_cond_estim_ = M
-        #     return _FittedQuaPyMethod(quantifier)
-        # else
-        #     quantifier = QuaPy.Methods.ACC(classifier)
-        #     y_ = mapslices(argmax, fX; dims=2)[:]
-        #     quantifier.__object.cc = QuaPy.__QUAPY.method.aggregative.CC(classifier)
-        #     quantifier.__object.Pte_cond_estim_ = M
-        #     return _FittedQuaPyMethod(quantifier)
-        # end
         classifier = m.classifier
         if !hasproperty(classifier, :oob_score) || !classifier.oob_score
             error("Only bagging classifiers with oob_score=true are supported")
@@ -191,7 +171,7 @@ function main()
         ae = Float64[], # absolute error
         exception = String[],
     )
-    for sample_index ∈ 0:9 # 99
+    for sample_index ∈ 0:99 # 999
         println("Predicting sample $(sample_index+1)/100")
         X_dev = read_dev_sample(sample_index)
         for (method_name, method) ∈ methods

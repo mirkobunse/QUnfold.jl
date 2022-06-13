@@ -62,7 +62,7 @@ predict(m::FittedMethod, X::Any) =
 
 function clip_and_normalize(x::Vector{Float64})
     x[x .< 0] .= 0
-    # x[x .> 1] .= 1
+    x[x .> 1] .= 1
     return x ./ sum(x)
 end
 

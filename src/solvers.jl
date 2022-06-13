@@ -1,6 +1,5 @@
 using JuMP
-import Ipopt
-import MathOptInterface: TerminationStatusCode, INTERRUPTED, LOCALLY_SOLVED, OPTIMAL
+import Ipopt, MathOptInterface.TerminationStatusCode
 
 struct NonOptimalStatusError <: Exception
     termination_status::TerminationStatusCode
@@ -28,9 +27,8 @@ function solve_least_squares(M::Matrix, q::Vector{Float64}, strategy::Symbol)
     status = termination_status(model)
     if status == INTERRUPTED
         throw(InterruptException())
-    elseif status ∉ [LOCALLY_SOLVED, OPTIMAL]
-        p_est = exp.(value.(l)) ./ sum(exp.(value.(l)))
-        @error "Non-optimal status after optimization" strategy status maximum(p_est) minimum(p_est) maximum(value.(l)) minimum(value.(l))
+    elseif status ∉ [LOCALLY_SOLVED, OPTIMAL, ALMOST_LOCALLY_SOLVED, ALMOST_OPTIMAL]
+        @error "Non-optimal status after optimization" strategy status
         throw(NonOptimalStatusError(status))
     end
 
