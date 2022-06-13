@@ -32,7 +32,7 @@ _transform(f::FittedTransformer, X::Any) =
 
 Map an array of labels / crisp predictions `y` to a one-hot encoded indicator matrix.
 """
-onehot_encoding(y, classes=unique(y)) = permutedims(classes) .== y
+onehot_encoding(y, classes=unique(y)) = Float64.(permutedims(classes) .== y)
 
 # classification-based feature transformation
 
@@ -56,11 +56,13 @@ function _fit_transform(t::ClassTransformer, X::Any, y::AbstractVector{T}) where
         classifier = ScikitLearnBase.clone(classifier)
         ScikitLearnBase.fit!(classifier, X, y)
     end
-    fX = if t.is_probabilistic
-        classifier.oob_decision_function_
-    else
-        onehot_encoding(
-            mapslices(argmax, classifier.oob_decision_function_; dims=2)[:], # y_pred
+    fX = classifier.oob_decision_function_
+    i_finite = [ all(isfinite.(x)) for x in eachrow(fX) ]
+    fX = fX[i_finite,:]
+    y = y[i_finite]
+    if !t.is_probabilistic
+        fX = onehot_encoding(
+            mapslices(argmax, fX; dims=2)[:], # y_pred
             ScikitLearnBase.get_classes(classifier)
         )
     end

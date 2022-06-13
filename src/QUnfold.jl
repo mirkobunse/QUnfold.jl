@@ -58,6 +58,15 @@ predict(m::FittedMethod, X::Any) =
     _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:])
 
 
+# utility methods
+
+function clip_and_normalize(x::Vector{Float64})
+    x[x .< 0] .= 0
+    # x[x .> 1] .= 1
+    return x ./ sum(x)
+end
+
+
 # classification-based least squares and un-adjusted methods: ACC, PACC, CC, PCC
 
 struct _ACC <: AbstractMethod
@@ -81,9 +90,9 @@ _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}) =
     if m.strategy ∈ [:constrained, :softmax]
         solve_least_squares(M, q, m.strategy)
     elseif m.strategy == :pinv
-        pinv(M) * q
+        clip_and_normalize(pinv(M) * q)
     elseif m.strategy == :inv
-        inv(M) * q
+        clip_and_normalize(inv(M) * q)
     elseif m.strategy == :none
         q
     else

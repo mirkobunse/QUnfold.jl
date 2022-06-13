@@ -1,0 +1,222 @@
+if ".." ∉ LOAD_PATH push!(LOAD_PATH, "..") end # add QUnfold to the LOAD_PATH
+using
+    DataFrames,
+    DelimitedFiles,
+    LinearAlgebra,
+    PyCall,
+    QUnfold,
+    Random,
+    StatsBase,
+    QuaPy
+import ScikitLearn, ScikitLearnBase, QuaPy
+
+Random.seed!(42) # make tests reproducible
+
+
+# classifiers and data sets
+
+BaggingClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").BaggingClassifier
+LogisticRegression = pyimport_conda("sklearn.linear_model", "scikit-learn").LogisticRegression
+
+function read_trn(path="experiments/data/T1B/public/training_data.txt")
+    data = readdlm(path, ',', '\n'; skipstart=1)
+    return data[:,2:end], round.(Int, data[:,1]) .+ 1 # = X, y
+end
+
+read_dev_prevalences(path="experiments/data/T1B/public/dev_prevalences.txt") =
+    readdlm(path, ',', '\n'; skipstart=1)[:, 2:end]
+
+read_dev_sample(index, dir="experiments/data/T1B/public/dev_samples") =
+    readdlm("$(dir)/$(index).txt", ',', '\n'; skipstart=1)
+
+
+# utilities QuaPy wrappers
+
+abstract type _QuaPyMethod <: QUnfold.AbstractMethod end
+
+struct _FittedQuaPyMethod
+    quantifier::QuaPy.Methods.BaseQuantifier
+end
+
+QUnfold.predict(m::_FittedQuaPyMethod, X::Any) = QuaPy.quantify(m.quantifier, X)
+
+
+# QuaPy EMQ
+
+struct _QuaPyEMQ <: _QuaPyMethod
+    classifier::Any
+    fit_classifier::Bool
+end
+QuaPyEMQ(c::Any; fit_classifier::Bool=true) = _QuaPyEMQ(c, fit_classifier)
+
+function QUnfold.fit(m::_QuaPyEMQ, X::Any, y::AbstractVector{T}) where {T <: Integer}
+    quantifier = QuaPy.Methods.EMQ(m.classifier)
+    QuaPy.fit!(quantifier, X, y; fit_learner=m.fit_classifier)
+    return _FittedQuaPyMethod(quantifier)
+end
+
+
+# QuaPy ACC / PACC
+
+struct _QuaPyACC <: _QuaPyMethod
+    classifier::Any
+    is_probabilistic::Bool
+    oob_score::Bool
+    fit_classifier::Bool
+end
+QuaPyACC(c::Any; oob_score::Bool=true, fit_classifier::Bool=true) =
+    _QuaPyACC(c, false, oob_score, fit_classifier)
+QuaPyPACC(c::Any; oob_score::Bool=true, fit_classifier::Bool=true) =
+    _QuaPyACC(c, true, oob_score, fit_classifier)
+
+py"""
+import numpy as np
+from sklearn.metrics import confusion_matrix
+
+# https://github.com/HLT-ISTI/QuaPy/blob/6a5c528154c2d6d38d9f3258e667727bf692fc8b/quapy/method/aggregative.py#L319
+def accPteCondEstim(classes, y, y_):
+    conf = confusion_matrix(y, y_, labels=classes).T
+    conf = conf.astype(np.float)
+    class_counts = conf.sum(axis=0)
+    for i, _ in enumerate(classes):
+        if class_counts[i] == 0:
+            conf[i, i] = 1
+        else:
+            conf[:, i] /= class_counts[i]
+    return conf
+
+# https://github.com/HLT-ISTI/QuaPy/blob/6a5c528154c2d6d38d9f3258e667727bf692fc8b/quapy/method/aggregative.py#L450
+def paccPteCondEstim(classes, y, y_):
+    confusion = np.eye(len(classes))
+    for i, class_ in enumerate(classes):
+        idx = y == class_
+        if idx.any():
+            confusion[i] = y_[idx].mean(axis=0)
+    return confusion.T
+"""
+
+function QUnfold.fit(m::_QuaPyACC, X::Any, y::AbstractVector{T}) where {T <: Integer}
+    if m.oob_score # custom ACC/PACC.fit with OOB decision function
+        # transformer = QUnfold.ClassTransformer(m.classifier, m.is_probabilistic, m.fit_classifier)
+        # f, fX, fy = QUnfold._fit_transform(transformer, X, y) # f(x) for x ∈ X
+        # M = zeros(length(unique(y)), size(fX, 2)) # (n_classes, n_features)
+        # for (fX_i, fy_i) in zip(eachrow(fX), fy)
+        #     M[fy_i, :] .+= fX_i # one histogram of f(X) per class
+        # end
+        # M ./= sum(M; dims=2)
+        # classifier = transformer.classifier
+        # if m.is_probabilistic
+        #     quantifier = QuaPy.Methods.PACC(classifier)
+        #     quantifier.__object.pcc = QuaPy.__QUAPY.method.aggregative.PCC(classifier)
+        #     quantifier.__object.Pte_cond_estim_ = M
+        #     return _FittedQuaPyMethod(quantifier)
+        # else
+        #     quantifier = QuaPy.Methods.ACC(classifier)
+        #     y_ = mapslices(argmax, fX; dims=2)[:]
+        #     quantifier.__object.cc = QuaPy.__QUAPY.method.aggregative.CC(classifier)
+        #     quantifier.__object.Pte_cond_estim_ = M
+        #     return _FittedQuaPyMethod(quantifier)
+        # end
+        classifier = m.classifier
+        if !hasproperty(classifier, :oob_score) || !classifier.oob_score
+            error("Only bagging classifiers with oob_score=true are supported")
+        end # TODO add support for non-bagging classifiers
+        if m.fit_classifier
+            classifier = ScikitLearnBase.clone(classifier)
+            ScikitLearnBase.fit!(classifier, X, y)
+        end
+        fX = classifier.oob_decision_function_
+        i_finite = [ all(isfinite.(x)) for x in eachrow(fX) ]
+        fX = fX[i_finite,:]
+        y = y[i_finite]
+        if m.is_probabilistic
+            quantifier = QuaPy.Methods.PACC(m.classifier)
+            quantifier.__object.pcc = QuaPy.__QUAPY.method.aggregative.PCC(classifier)
+            quantifier.__object.Pte_cond_estim_ = py"paccPteCondEstim"(ScikitLearnBase.get_classes(classifier), y, fX)
+            return _FittedQuaPyMethod(quantifier)
+        else
+            quantifier = QuaPy.Methods.ACC(m.classifier)
+            y_ = mapslices(argmax, fX; dims=2)[:]
+            quantifier.__object.cc = QuaPy.__QUAPY.method.aggregative.CC(classifier)
+            quantifier.__object.Pte_cond_estim_ = py"accPteCondEstim"(ScikitLearnBase.get_classes(classifier), y, y_)
+            return _FittedQuaPyMethod(quantifier)
+        end
+    elseif m.fit_classifier
+        quantifier = (m.is_probabilistic ? QuaPy.Methods.PACC : QuaPy.Methods.ACC)(m.classifier)
+        QuaPy.fit!(quantifier, X, y; fit_learner=m.fit_classifier)
+        return _FittedQuaPyMethod(quantifier)
+    else
+        error("At least one of [oob_score, fit_classifier] must be true")
+    end
+end
+
+
+# experiment
+
+function main()
+    X_trn, y_trn = read_trn()
+    n_classes = length(unique(y_trn))
+    c = BaggingClassifier(
+        LogisticRegression(C=0.1),
+        5; # n_estimators
+        oob_score = true,
+        random_state = rand(UInt32),
+        n_jobs = -1
+    )
+    ScikitLearn.fit!(c, X_trn, y_trn) # fit the base classifier
+    methods = []
+    for (method_name, method) ∈ [ # fit all methods
+            "EMQ (QuaPy)" => QuaPyEMQ(c; fit_classifier=false),
+            "ACC (QuaPy)" => QuaPyACC(c; fit_classifier=false),
+            "PACC (QuaPy)" => QuaPyPACC(c; fit_classifier=false),
+            "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
+            "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
+            "ACC (pinv)" => ACC(c; strategy=:pinv, fit_classifier=false),
+            "ACC (inv)" => ACC(c; strategy=:inv, fit_classifier=false),
+            "CC" => CC(c; fit_classifier=false),
+            "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
+            "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
+            "PACC (pinv)" => PACC(c; strategy=:pinv, fit_classifier=false),
+            "PACC (inv)" => PACC(c; strategy=:inv, fit_classifier=false),
+            "PCC" => PCC(c; fit_classifier=false),
+        ]
+        push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
+    end
+
+    # evaluate the methods on all samples
+    p_true = read_dev_prevalences() # true prevalences of all validation samples
+    df = DataFrame(;
+        sample_index = Int[],
+        method = String[],
+        ae = Float64[], # absolute error
+        exception = String[],
+    )
+    for sample_index ∈ 0:9 # 99
+        println("Predicting sample $(sample_index+1)/100")
+        X_dev = read_dev_sample(sample_index)
+        for (method_name, method) ∈ methods
+            try
+                p_hat = QUnfold.predict(method, X_dev)
+                ae = mean(abs.(p_hat - p_true[sample_index+1,:]))
+                push!(df, [sample_index, method_name, ae, ""])
+            catch err
+                if isa(err, QUnfold.NonOptimalStatusError)
+                    push!(df, [sample_index, method_name, -1, string(err.termination_status)])
+                else
+                    rethrow()
+                end
+            end
+        end
+    end
+    return innerjoin(
+        combine( # average performance metrics
+            groupby(df[df[!,:exception].=="",:], :method),
+            :ae => DataFrames.mean => :ae
+        ),
+        combine( # number of failures
+            groupby(df, :method),
+            :exception => (x -> sum(x .!= "")) => :n_failures
+        ),
+        on = :method
+    )
+end
