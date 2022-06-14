@@ -153,6 +153,7 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
         C = Float64[],
         ae = Float64[], # absolute error
         rae = Float64[], # relative absolute error
+        is_pdf = Bool[], # is the estimate a valid probability density?
         exception = String[],
     )
 
@@ -162,9 +163,9 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
     n_samples = 1000
     if is_test_run
         @warn "This is a test run; results are not meaningful"
-        C_values = [ 0.01 ]
-        n_estimators = 5
-        n_samples = 5
+        C_values = [ 0.01, 0.1 ]
+        n_estimators = 3
+        n_samples = 3
     end
 
     # grid search for the BaggingClassifier
@@ -206,12 +207,13 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
                     p_hat = QUnfold.predict(method, X_dev)
                     ae = mean(abs.(p_true[sample_index+1,:] - p_hat))
                     rae = _rae(p_true[sample_index+1,:], p_hat, 1/(2*size(X_dev,1)))
-                    push!(outcome, ae, rae, "")
+                    is_pdf = sum(p_hat) ≈ 1 && all(p_hat .> -sqrt(eps(Float64)))
+                    push!(outcome, ae, rae, is_pdf, "")
                 catch err
                     if isa(err, QUnfold.NonOptimalStatusError)
-                        push!(outcome, NaN, NaN, string(err.termination_status))
+                        push!(outcome, NaN, NaN, false, string(err.termination_status))
                     elseif isa(err, SingularException)
-                        push!(outcome, NaN, NaN, "SingularException")
+                        push!(outcome, NaN, NaN, false, "SingularException")
                     else
                         rethrow()
                     end
@@ -226,7 +228,8 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
         combine( # average performance metrics
             groupby(df[df[!,:exception].=="",:], [:method, :C]),
             :ae => DataFrames.mean => :ae,
-            :rae => DataFrames.mean => :rae
+            :rae => DataFrames.mean => :rae,
+            :is_pdf => (x -> DataFrames.sum(.!(x))) => :n_pdf_failures
         ),
         combine( # number of failures
             groupby(df, [:method, :C]),
@@ -234,12 +237,10 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
         ),
         on = [:method, :C]
     )
-    df[!,:ae] = coalesce.(df[!,:ae], NaN)
-    df[!,:rae] = coalesce.(df[!,:rae], NaN)
     best = combine(
         groupby(df, :method),
         sdf -> begin
-            sdf2 = sdf[isfinite.(sdf[!,:rae]),:]
+            sdf2 = sdf[.!(ismissing.(sdf[!,:rae])),:]
             nrow(sdf2) > 0 ? sdf2[argmin(sdf2[!,:rae]),:] : sdf[1,:]
         end
     )
