@@ -134,6 +134,13 @@ function QUnfold.fit(m::_QuaPyACC, X::Any, y::AbstractVector{T}) where {T <: Int
 end
 
 
+# evaluation (https://github.com/HLT-ISTI/LeQua2022_scripts/blob/main/evaluate.py#L46)
+
+_smooth(p::Vector{Float64}, ϵ::Float64) = (p .+ ϵ) ./ (1 + ϵ * length(p))
+_rae(p_true::Vector{Float64}, p_hat::Vector{Float64}, ϵ::Float64) =
+    mean(abs.(_smooth(p_true, ϵ) - _smooth(p_hat, ϵ)) ./ _smooth(p_true, ϵ))
+
+
 # experiment
 
 function main(; best_path::String="", all_path::String="", is_test_run::Bool=false)
@@ -145,6 +152,7 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
         method = String[],
         C = Float64[],
         ae = Float64[], # absolute error
+        rae = Float64[], # relative absolute error
         exception = String[],
     )
 
@@ -193,19 +201,22 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
             println("C=$(C); predicting sample $(sample_index+1)/$(n_samples)")
             X_dev = read_dev_sample(sample_index)
             for (method_name, method) ∈ methods
+                outcome = [sample_index, method_name, C]
                 try
                     p_hat = QUnfold.predict(method, X_dev)
-                    ae = mean(abs.(p_hat - p_true[sample_index+1,:]))
-                    push!(df, [sample_index, method_name, C, ae, ""])
+                    ae = mean(abs.(p_true[sample_index+1,:] - p_hat))
+                    rae = _rae(p_true[sample_index+1,:], p_hat, 1/(2*size(X_dev,1)))
+                    push!(outcome, ae, rae, "")
                 catch err
                     if isa(err, QUnfold.NonOptimalStatusError)
-                        push!(df, [sample_index, method_name, C, NaN, string(err.termination_status)])
+                        push!(outcome, NaN, NaN, string(err.termination_status))
                     elseif isa(err, SingularException)
-                        push!(df, [sample_index, method_name, C, NaN, "SingularException"])
+                        push!(outcome, NaN, NaN, "SingularException")
                     else
                         rethrow()
                     end
                 end
+                push!(df, outcome)
             end
         end
     end
@@ -214,7 +225,8 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
     df = outerjoin(
         combine( # average performance metrics
             groupby(df[df[!,:exception].=="",:], [:method, :C]),
-            :ae => DataFrames.mean => :ae
+            :ae => DataFrames.mean => :ae,
+            :rae => DataFrames.mean => :rae
         ),
         combine( # number of failures
             groupby(df, [:method, :C]),
@@ -223,11 +235,12 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
         on = [:method, :C]
     )
     df[!,:ae] = coalesce.(df[!,:ae], NaN)
+    df[!,:rae] = coalesce.(df[!,:rae], NaN)
     best = combine(
         groupby(df, :method),
         sdf -> begin
-            sdf2 = sdf[isfinite.(sdf[!,:ae]),:]
-            nrow(sdf2) > 0 ? sdf2[argmin(sdf2[!,:ae]),:] : sdf[1,:]
+            sdf2 = sdf[isfinite.(sdf[!,:rae]),:]
+            nrow(sdf2) > 0 ? sdf2[argmin(sdf2[!,:rae]),:] : sdf[1,:]
         end
     )
     @info "Best methods after hyper-parameter optimization" best
