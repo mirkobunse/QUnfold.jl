@@ -14,6 +14,7 @@ RUN apt-get update && \
         git \
         less \
         nano \
+        p7zip-full \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
