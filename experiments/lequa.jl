@@ -1,5 +1,8 @@
 if ".." ∉ LOAD_PATH push!(LOAD_PATH, "..") end # add QUnfold to the LOAD_PATH
+ENV["PYTHONWARNINGS"] = "ignore"
 using
+    ArgParse,
+    CSV,
     DataFrames,
     DelimitedFiles,
     LinearAlgebra,
@@ -133,70 +136,135 @@ end
 
 # experiment
 
-function main()
+function main(; best_path::String="", all_path::String="", is_test_run::Bool=false)
     X_trn, y_trn = read_trn()
     n_classes = length(unique(y_trn))
-    c = BaggingClassifier(
-        LogisticRegression(C=0.1),
-        5; # n_estimators
-        oob_score = true,
-        random_state = rand(UInt32),
-        n_jobs = -1
-    )
-    ScikitLearn.fit!(c, X_trn, y_trn) # fit the base classifier
-    methods = []
-    for (method_name, method) ∈ [ # fit all methods
-            "EMQ (QuaPy)" => QuaPyEMQ(c; fit_classifier=false),
-            "ACC (QuaPy)" => QuaPyACC(c; fit_classifier=false),
-            "PACC (QuaPy)" => QuaPyPACC(c; fit_classifier=false),
-            "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
-            "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
-            "ACC (pinv)" => ACC(c; strategy=:pinv, fit_classifier=false),
-            "ACC (inv)" => ACC(c; strategy=:inv, fit_classifier=false),
-            "CC" => CC(c; fit_classifier=false),
-            "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
-            "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
-            "PACC (pinv)" => PACC(c; strategy=:pinv, fit_classifier=false),
-            "PACC (inv)" => PACC(c; strategy=:inv, fit_classifier=false),
-            "PCC" => PCC(c; fit_classifier=false),
-        ]
-        push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
-    end
-
-    # evaluate the methods on all samples
     p_true = read_dev_prevalences() # true prevalences of all validation samples
     df = DataFrame(;
         sample_index = Int[],
         method = String[],
+        C = Float64[],
         ae = Float64[], # absolute error
         exception = String[],
     )
-    for sample_index ∈ 0:99 # 999
-        println("Predicting sample $(sample_index+1)/100")
-        X_dev = read_dev_sample(sample_index)
-        for (method_name, method) ∈ methods
-            try
-                p_hat = QUnfold.predict(method, X_dev)
-                ae = mean(abs.(p_hat - p_true[sample_index+1,:]))
-                push!(df, [sample_index, method_name, ae, ""])
-            catch err
-                if isa(err, QUnfold.NonOptimalStatusError)
-                    push!(df, [sample_index, method_name, -1, string(err.termination_status)])
-                else
-                    rethrow()
+
+    # configure the experiment
+    C_values = [ 0.001, 0.01, 0.1, 1.0, 10.0 ]
+    n_estimators = 100
+    n_samples = 1000
+    if is_test_run
+        @warn "This is a test run; results are not meaningful"
+        C_values = [ 0.01 ]
+        n_estimators = 5
+        n_samples = 5
+    end
+
+    # grid search for the BaggingClassifier
+    for C ∈ C_values
+        c = BaggingClassifier(
+            LogisticRegression(C=C),
+            n_estimators;
+            oob_score = true,
+            random_state = rand(UInt32),
+            n_jobs = -1
+        )
+        ScikitLearn.fit!(c, X_trn, y_trn) # fit the base classifier
+        methods = []
+        for (method_name, method) ∈ [ # fit all methods
+                "EMQ (QuaPy)" => QuaPyEMQ(c; fit_classifier=false), # QuaPy methods for reference
+                "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
+                "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
+                "ACC (pinv)" => ACC(c; strategy=:pinv, fit_classifier=false),
+                "ACC (inv)" => ACC(c; strategy=:inv, fit_classifier=false),
+                "ACC (QuaPy)" => QuaPyACC(c; fit_classifier=false),
+                "CC" => CC(c; fit_classifier=false),
+                "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
+                "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
+                "PACC (pinv)" => PACC(c; strategy=:pinv, fit_classifier=false),
+                "PACC (inv)" => PACC(c; strategy=:inv, fit_classifier=false),
+                "PACC (QuaPy)" => QuaPyPACC(c; fit_classifier=false),
+                "PCC" => PCC(c; fit_classifier=false),
+            ]
+            push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
+        end
+
+        # evaluate the methods on all samples
+        for sample_index ∈ 0:(n_samples-1)
+            println("C=$(C); predicting sample $(sample_index+1)/$(n_samples)")
+            X_dev = read_dev_sample(sample_index)
+            for (method_name, method) ∈ methods
+                try
+                    p_hat = QUnfold.predict(method, X_dev)
+                    ae = mean(abs.(p_hat - p_true[sample_index+1,:]))
+                    push!(df, [sample_index, method_name, C, ae, ""])
+                catch err
+                    if isa(err, QUnfold.NonOptimalStatusError)
+                        push!(df, [sample_index, method_name, C, NaN, string(err.termination_status)])
+                    elseif isa(err, SingularException)
+                        push!(df, [sample_index, method_name, C, NaN, "SingularException"])
+                    else
+                        rethrow()
+                    end
                 end
             end
         end
     end
-    return innerjoin(
+
+    # aggregations: performance metrics and failures
+    df = outerjoin(
         combine( # average performance metrics
-            groupby(df[df[!,:exception].=="",:], :method),
+            groupby(df[df[!,:exception].=="",:], [:method, :C]),
             :ae => DataFrames.mean => :ae
         ),
         combine( # number of failures
-            groupby(df, :method),
+            groupby(df, [:method, :C]),
             :exception => (x -> sum(x .!= "")) => :n_failures
         ),
-        on = :method
+        on = [:method, :C]
     )
+    df[!,:ae] = coalesce.(df[!,:ae], NaN)
+    best = combine(
+        groupby(df, :method),
+        sdf -> begin
+            sdf2 = sdf[isfinite.(sdf[!,:ae]),:]
+            nrow(sdf2) > 0 ? sdf2[argmin(sdf2[!,:ae]),:] : sdf[1,:]
+        end
+    )
+    @info "Best methods after hyper-parameter optimization" best
+
+    # file export
+    if length(best_path) > 0
+        mkpath(dirname(best_path))
+        CSV.write(best_path, best)
+        @info "$(nrow(best)) results written to $(best_path)"
+    end
+    if length(all_path) > 0
+        mkpath(dirname(all_path))
+        CSV.write(all_path, df)
+        @info "$(nrow(df)) results written to $(all_path)"
+    end
+    return df
+end
+
+
+# command line interface
+
+function parse_commandline()
+    s = ArgParseSettings()
+    @add_arg_table s begin
+        "--is_test_run", "-t"
+            help = "whether this run is shortened for testing purposes"
+            action = :store_true
+        "best_path"
+            help = "the output path for the best hyper-parameter configurations"
+            required = true
+        "all_path"
+            help = "the output path for all hyper-parameter configurations"
+            required = true
+    end
+    return parse_args(s; as_symbols=true)
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    main(; parse_commandline()...)
 end
