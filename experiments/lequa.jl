@@ -186,12 +186,14 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
                 "ACC (pinv)" => ACC(c; strategy=:pinv, fit_classifier=false),
                 "ACC (inv)" => ACC(c; strategy=:inv, fit_classifier=false),
                 "ACC (QuaPy)" => QuaPyACC(c; fit_classifier=false),
+                "ACC (ovr)" => ACC(c; strategy=:ovr, fit_classifier=false),
                 "CC" => CC(c; fit_classifier=false),
                 "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
                 "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
                 "PACC (pinv)" => PACC(c; strategy=:pinv, fit_classifier=false),
                 "PACC (inv)" => PACC(c; strategy=:inv, fit_classifier=false),
                 "PACC (QuaPy)" => QuaPyPACC(c; fit_classifier=false),
+                "PACC (ovr)" => PACC(c; strategy=:ovr, fit_classifier=false),
                 "PCC" => PCC(c; fit_classifier=false),
             ]
             push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))

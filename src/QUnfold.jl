@@ -71,7 +71,7 @@ end
 
 struct _ACC <: AbstractMethod
     classifier::Any
-    strategy::Symbol # ∈ {:constrained, :softmax, :pinv, :inv, :none}
+    strategy::Symbol # ∈ {:constrained, :softmax, :pinv, :inv, :ovr, :none}
     is_probabilistic::Bool
     fit_classifier::Bool
 end
@@ -93,6 +93,11 @@ _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}) =
         clip_and_normalize(pinv(M) * q)
     elseif m.strategy == :inv
         clip_and_normalize(inv(M) * q)
+    elseif m.strategy == :ovr
+        true_positive_rates = diag(M)
+        false_positive_rates = sum(M .- diagm(0=>diag(M)), dims=2)[:]
+        p = (q - false_positive_rates) ./ (true_positive_rates - false_positive_rates)
+        clip_and_normalize(p)
     elseif m.strategy == :none
         q
     else
