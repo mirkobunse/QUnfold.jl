@@ -96,7 +96,6 @@ _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}) 
     elseif m.strategy == :inv
         clip_and_normalize(inv(M) * q)
     elseif m.strategy == :ovr
-        C = length(p_trn) # number of classes
         true_positive_rates = diag(M)
         false_positive_rates = (1 .- diag(M .* reshape(p_trn, (1, length(p_trn))))) ./ (1 .- p_trn) # renormalize M
         p = (q - false_positive_rates) ./ (true_positive_rates - false_positive_rates)

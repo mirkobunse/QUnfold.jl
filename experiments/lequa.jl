@@ -25,12 +25,8 @@ function read_trn(path="data/T1B/public/training_data.txt")
     data = readdlm(path, ',', '\n'; skipstart=1)
     return data[:,2:end], round.(Int, data[:,1]) .+ 1 # = X, y
 end
-
-read_dev_prevalences(path="data/T1B/public/dev_prevalences.txt") =
-    readdlm(path, ',', '\n'; skipstart=1)[:, 2:end]
-
-read_dev_sample(index, dir="data/T1B/public/dev_samples") =
-    readdlm("$(dir)/$(index).txt", ',', '\n'; skipstart=1)
+read_prevalences(path) = readdlm(path, ',', '\n'; skipstart=1)[:, 2:end]
+read_sample(index, dir) = readdlm("$(dir)/$(index).txt", ',', '\n'; skipstart=1)
 
 
 # utilities QuaPy wrappers
@@ -143,10 +139,13 @@ _rae(p_true::Vector{Float64}, p_hat::Vector{Float64}, ϵ::Float64) =
 
 # experiment
 
-function main(; best_path::String="", all_path::String="", is_test_run::Bool=false)
+function main(; output_path::String="", is_validation_run::Bool=false, is_test_run::Bool=false)
     X_trn, y_trn = read_trn()
     n_classes = length(unique(y_trn))
-    p_true = read_dev_prevalences() # true prevalences of all validation samples
+    prevalence_path = "data/T1B/public/" * (is_validation_run ? "dev" : "test") * "_prevalences.txt"
+    sample_dir = "data/T1B/public/" * (is_validation_run ? "dev" : "test") * "_samples"
+    @info "Reading target data" prevalence_path sample_dir
+    p_true = read_prevalences(prevalence_path)
     df = DataFrame(;
         sample_index = Int[],
         method = String[],
@@ -160,7 +159,7 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
     # configure the experiment
     C_values = [ 0.001, 0.01, 0.1, 1.0, 10.0 ]
     n_estimators = 100
-    n_samples = 1000
+    n_samples = is_validation_run ? 1000 : 5000
     if is_test_run
         @warn "This is a test run; results are not meaningful"
         C_values = [ 0.01, 0.1 ]
@@ -203,7 +202,7 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
         # evaluate the methods on all samples
         for sample_index ∈ 0:(n_samples-1)
             println("C=$(C); predicting sample $(sample_index+1)/$(n_samples)")
-            X_dev = read_dev_sample(sample_index)
+            X_dev = read_sample(sample_index, sample_dir)
             for (method_name, method) ∈ methods
                 outcome = [sample_index, method_name, C]
                 try
@@ -247,18 +246,13 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
             nrow(sdf2) > 0 ? sdf2[argmin(sdf2[!,:rae]),:] : sdf[1,:]
         end
     )
-    @info "Best methods after hyper-parameter optimization" best
+    @info "Best RAE methods after hyper-parameter optimization" best
 
     # file export
-    if length(best_path) > 0
-        mkpath(dirname(best_path))
-        CSV.write(best_path, best)
-        @info "$(nrow(best)) results written to $(best_path)"
-    end
-    if length(all_path) > 0
-        mkpath(dirname(all_path))
-        CSV.write(all_path, df)
-        @info "$(nrow(df)) results written to $(all_path)"
+    if length(output_path) > 0
+        mkpath(dirname(output_path))
+        CSV.write(output_path, df)
+        @info "$(nrow(df)) results written to $(output_path)"
     end
     return df
 end
@@ -269,13 +263,13 @@ end
 function parse_commandline()
     s = ArgParseSettings()
     @add_arg_table s begin
+        "--is_validation_run", "-v"
+            help = "whether this run should work on the validation set"
+            action = :store_true
         "--is_test_run", "-t"
             help = "whether this run is shortened for testing purposes"
             action = :store_true
-        "best_path"
-            help = "the output path for the best hyper-parameter configurations"
-            required = true
-        "all_path"
+        "output_path"
             help = "the output path for all hyper-parameter configurations"
             required = true
     end
