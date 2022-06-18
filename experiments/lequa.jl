@@ -169,12 +169,13 @@ function main(; best_path::String="", all_path::String="", is_test_run::Bool=fal
     end
 
     # grid search for the BaggingClassifier
-    for C ∈ C_values
+    C_seeds = rand(UInt32, length(C_values))
+    for (C, C_seed) ∈ zip(C_values, C_seeds)
         c = BaggingClassifier(
             LogisticRegression(C=C),
             n_estimators;
             oob_score = true,
-            random_state = rand(UInt32),
+            random_state = C_seed,
             n_jobs = -1
         )
         ScikitLearn.fit!(c, X_trn, y_trn) # fit the base classifier
