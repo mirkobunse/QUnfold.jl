@@ -21,15 +21,15 @@ Random.seed!(42) # make tests reproducible
 BaggingClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").BaggingClassifier
 LogisticRegression = pyimport_conda("sklearn.linear_model", "scikit-learn").LogisticRegression
 
-function read_trn(path="experiments/data/T1B/public/training_data.txt")
+function read_trn(path="data/T1B/public/training_data.txt")
     data = readdlm(path, ',', '\n'; skipstart=1)
     return data[:,2:end], round.(Int, data[:,1]) .+ 1 # = X, y
 end
 
-read_dev_prevalences(path="experiments/data/T1B/public/dev_prevalences.txt") =
+read_dev_prevalences(path="data/T1B/public/dev_prevalences.txt") =
     readdlm(path, ',', '\n'; skipstart=1)[:, 2:end]
 
-read_dev_sample(index, dir="experiments/data/T1B/public/dev_samples") =
+read_dev_sample(index, dir="data/T1B/public/dev_samples") =
     readdlm("$(dir)/$(index).txt", ',', '\n'; skipstart=1)
 
 
