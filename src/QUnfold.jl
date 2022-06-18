@@ -16,6 +16,7 @@ struct FittedMethod{S<:AbstractMethod, T<:FittedTransformer}
     method::S
     M::Matrix{Float64}
     f::T
+    p_trn::Vector{Float64}
 end
 
 """
@@ -27,12 +28,12 @@ _transformer(m::AbstractMethod) =
     error("_transformer not implemented for $(typeof(m))")
 
 """
-    _solve(m, M, q)
+    _solve(m, M, q, p_trn)
 
-Solve the optimization task defined by the transfer matrix `M` and the observed
-histogram `q` with the QUnfold method `m`.
+Solve the optimization task defined by the transfer matrix `M`, the observed
+histogram `q`, and the training prevalences `p_trn` with the QUnfold method `m`.
 """
-_solve(m::AbstractMethod, M::Matrix{Float64}, q::Vector{Float64}) =
+_solve(m::AbstractMethod, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}) =
     error("_solve not implemented for $(typeof(m))")
 
 """
@@ -46,7 +47,8 @@ function fit(m::AbstractMethod, X::Any, y::AbstractVector{T}) where {T <: Intege
     for (fX_i, fy_i) in zip(eachrow(fX), fy)
         M[:, fy_i] .+= fX_i # one histogram of f(X) per class
     end
-    return FittedMethod(m, M ./ sum(M; dims=1), f) # normalize M
+    p_trn = sum(M; dims=1)[:] / sum(M)
+    return FittedMethod(m, M ./ sum(M; dims=1), f, p_trn) # normalize M
 end
 
 """
@@ -55,7 +57,7 @@ end
 Predict the class prevalences in the data set `X` with the fitted method `m`.
 """
 predict(m::FittedMethod, X::Any) =
-    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:])
+    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn)
 
 
 # utility methods
@@ -86,7 +88,7 @@ PCC(c::Any; fit_classifier::Bool=true) =
 
 _transformer(m::_ACC) = ClassTransformer(m.classifier, m.is_probabilistic, m.fit_classifier)
 
-_solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}) =
+_solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}) =
     if m.strategy ∈ [:constrained, :softmax]
         solve_least_squares(M, q, m.strategy)
     elseif m.strategy == :pinv
@@ -94,8 +96,9 @@ _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}) =
     elseif m.strategy == :inv
         clip_and_normalize(inv(M) * q)
     elseif m.strategy == :ovr
+        C = length(p_trn) # number of classes
         true_positive_rates = diag(M)
-        false_positive_rates = sum(M .- diagm(0=>diag(M)), dims=2)[:]
+        false_positive_rates = (1 .- diag(M .* reshape(p_trn, (1, length(p_trn))))) ./ (1 .- p_trn) # renormalize M
         p = (q - false_positive_rates) ./ (true_positive_rates - false_positive_rates)
         clip_and_normalize(p)
     elseif m.strategy == :none
