@@ -14,8 +14,10 @@ extract_order(x) = Dict(
         "ovr" => 2,
         "inv" => 3,
         "pinv" => 4,
-        "constrained" => 5,
-        "softmax" => 6
+        "constrained; AE" => 5,
+        "softmax; AE" => 6,
+        "constrained; RAE" => 7,
+        "softmax; RAE" => 8,
     )[x[2]]
 
 extract_adjustment(x) = Dict(
@@ -24,8 +26,10 @@ extract_adjustment(x) = Dict(
         "ovr" => "one-vs-rest (Eq.~\\ref{eq:ovr})",
         "inv" => "inverse (Eq.~\\ref{eq:inv})",
         "pinv" => "pseudo-inverse (Eq.~\\ref{eq:pinv})",
-        "constrained" => "constrained (Eq.~\\ref{eq:constrained})",
-        "softmax" => "soft-max (Eq.~\\ref{eq:softmax})"
+        "constrained; AE" => "constrained (AE; Eq.~\\ref{eq:constrained})",
+        "softmax; AE" => "soft-max (AE; Eq.~\\ref{eq:softmax})",
+        "constrained; RAE" => "constrained (RAE; Eq.~\\ref{eq:constrained-rae})",
+        "softmax; RAE" => "soft-max (RAE; Eq.~\\ref{eq:softmax-rae})",
     )[x[2]]
 
 extract_method(x) = Dict(
@@ -42,7 +46,7 @@ format_scores(x) =
 function table_for_metric(df, metric)
     df = select_best(df, metric)
     @info "Selected the best methods for the metric $(metric)" best=df
-    matches = match.(r"(\w+)(?: \((\w+)\))?", df[!,:method]) # separate method from adjustment
+    matches = match.(r"(\w+)(?: \((\w+;? ?\w*)\))?", df[!,:method]) # separate method from adjustment
     df[!,:adjustment] = extract_adjustment.(matches)
     df[!,:order] = extract_order.(matches)
     df[!,:method] = extract_method.(matches)

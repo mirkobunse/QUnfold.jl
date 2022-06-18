@@ -74,23 +74,24 @@ end
 struct _ACC <: AbstractMethod
     classifier::Any
     strategy::Symbol # ∈ {:constrained, :softmax, :pinv, :inv, :ovr, :none}
+    metric::Symbol # ∈ {:ae, :rae}
     is_probabilistic::Bool
     fit_classifier::Bool
 end
-ACC(c::Any; strategy::Symbol=:constrained, fit_classifier::Bool=true) =
-    _ACC(c, strategy, false, fit_classifier)
-PACC(c::Any; strategy::Symbol=:constrained, fit_classifier::Bool=true) =
-    _ACC(c, strategy, true, fit_classifier)
+ACC(c::Any; strategy::Symbol=:constrained, metric::Symbol=:ae, fit_classifier::Bool=true) =
+    _ACC(c, strategy, metric, false, fit_classifier)
+PACC(c::Any; strategy::Symbol=:constrained, metric::Symbol=:ae, fit_classifier::Bool=true) =
+    _ACC(c, strategy, metric, true, fit_classifier)
 CC(c::Any; fit_classifier::Bool=true) =
-    _ACC(c, :none, false, fit_classifier)
+    _ACC(c, :none, :ae, false, fit_classifier)
 PCC(c::Any; fit_classifier::Bool=true) =
-    _ACC(c, :none, true, fit_classifier)
+    _ACC(c, :none, :ae, true, fit_classifier)
 
 _transformer(m::_ACC) = ClassTransformer(m.classifier, m.is_probabilistic, m.fit_classifier)
 
 _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}) =
     if m.strategy ∈ [:constrained, :softmax]
-        solve_least_squares(M, q, m.strategy)
+        solve_least_squares(M, q, m.strategy, m.metric)
     elseif m.strategy == :pinv
         clip_and_normalize(pinv(M) * q)
     elseif m.strategy == :inv
