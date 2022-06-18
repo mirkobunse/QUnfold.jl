@@ -41,6 +41,7 @@ format_scores(x) =
 
 function table_for_metric(df, metric)
     df = select_best(df, metric)
+    @info "Selected the best methods for the metric $(metric)" best=df
     matches = match.(r"(\w+)(?: \((\w+)\))?", df[!,:method]) # separate method from adjustment
     df[!,:adjustment] = extract_adjustment.(matches)
     df[!,:order] = extract_order.(matches)
@@ -69,6 +70,7 @@ function export_table(output_path, df)
 end
 
 df = CSV.read("results/lequa_validation.csv", DataFrame)
+@info "Configurations with failures" df[(df[!,:n_pdf_failures].>0) .| (df[!,:n_failures].>0),:]
 df = innerjoin(
     table_for_metric(df, :ae),
     table_for_metric(df, :rae),
