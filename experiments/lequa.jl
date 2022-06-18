@@ -1,3 +1,5 @@
+using Pkg
+Pkg.activate(".")
 if ".." ∉ LOAD_PATH push!(LOAD_PATH, "..") end # add QUnfold to the LOAD_PATH
 ENV["PYTHONWARNINGS"] = "ignore"
 using
@@ -5,6 +7,7 @@ using
     CSV,
     DataFrames,
     DelimitedFiles,
+    Distributed,
     LinearAlgebra,
     PyCall,
     QUnfold,
@@ -13,7 +16,7 @@ using
     QuaPy
 import ScikitLearn, ScikitLearnBase, QuaPy
 
-Random.seed!(42) # make tests reproducible
+Random.seed!(42) # make the experiment reproducible
 
 
 # classifiers and data sets
@@ -139,13 +142,25 @@ _rae(p_true::Vector{Float64}, p_hat::Vector{Float64}, ϵ::Float64) =
 
 # experiment
 
-function main(; output_path::String="", is_validation_run::Bool=false, is_test_run::Bool=false)
-    X_trn, y_trn = read_trn()
-    n_classes = length(unique(y_trn))
-    prevalence_path = "data/T1B/public/" * (is_validation_run ? "dev" : "test") * "_prevalences.txt"
-    sample_dir = "data/T1B/public/" * (is_validation_run ? "dev" : "test") * "_samples"
-    @info "Reading target data" prevalence_path sample_dir
-    p_true = read_prevalences(prevalence_path)
+sample_evaluation_factory(
+        n_samples::Int,
+        sample_dir::String,
+        methods::Vector{Pair{String,Union{QUnfold.FittedMethod,_FittedQuaPyMethod}}},
+        C::Float64,
+        p_true::Matrix{Float64}
+        ) =
+    sample_index::Int -> sample_evaluation(sample_index, n_samples, sample_dir, methods, C, p_true)
+
+function sample_evaluation(
+        sample_index::Int,
+        n_samples::Int,
+        sample_dir::String,
+        methods::Vector{Pair{String,Union{QUnfold.FittedMethod,_FittedQuaPyMethod}}},
+        C::Float64,
+        p_true::Matrix{Float64}
+        )
+    println("C=$(C); predicting sample $(sample_index+1)/$(n_samples) at worker $(myid())")
+    X_dev = read_sample(sample_index, sample_dir)
     df = DataFrame(;
         sample_index = Int[],
         method = String[],
@@ -155,6 +170,36 @@ function main(; output_path::String="", is_validation_run::Bool=false, is_test_r
         is_pdf = Bool[], # is the estimate a valid probability density?
         exception = String[],
     )
+    for (method_name, method) ∈ methods
+        outcome = [sample_index, method_name, C]
+        try
+            p_hat = QUnfold.predict(method, X_dev)
+            ae = mean(abs.(p_true[sample_index+1,:] - p_hat))
+            rae = _rae(p_true[sample_index+1,:], p_hat, 1/(2*size(X_dev,1)))
+            is_pdf = sum(p_hat) ≈ 1 && all(p_hat .> -sqrt(eps(Float64)))
+            push!(outcome, ae, rae, is_pdf, "")
+        catch err
+            if isa(err, QUnfold.NonOptimalStatusError)
+                push!(outcome, NaN, NaN, false, string(err.termination_status))
+            elseif isa(err, SingularException)
+                push!(outcome, NaN, NaN, false, "SingularException")
+            else
+                rethrow()
+            end
+        end
+        push!(df, outcome)
+    end
+    return df
+end
+
+function main(; output_path::String="", is_validation_run::Bool=false, is_test_run::Bool=false)
+    X_trn, y_trn = read_trn()
+    n_classes = length(unique(y_trn))
+    prevalence_path = "data/T1B/public/" * (is_validation_run ? "dev" : "test") * "_prevalences.txt"
+    sample_dir = "data/T1B/public/" * (is_validation_run ? "dev" : "test") * "_samples"
+    @info "Reading target data" prevalence_path sample_dir
+    p_true = read_prevalences(prevalence_path)
+    df = DataFrame() # empty DataFrame to which results are appended
 
     # configure the experiment
     C_values = [ 0.001, 0.01, 0.1, 1.0, 10.0 ]
@@ -178,7 +223,8 @@ function main(; output_path::String="", is_validation_run::Bool=false, is_test_r
             n_jobs = -1
         )
         ScikitLearn.fit!(c, X_trn, y_trn) # fit the base classifier
-        methods = []
+        c.n_jobs = nothing # ensemble members are applied in sequence; parallelize over samples
+        methods = Pair{String,Union{QUnfold.FittedMethod,_FittedQuaPyMethod}}[]
         for (method_name, method) ∈ [ # fit all methods
                 "EMQ (QuaPy)" => QuaPyEMQ(c; fit_classifier=false), # QuaPy methods for reference
                 "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
@@ -200,29 +246,9 @@ function main(; output_path::String="", is_validation_run::Bool=false, is_test_r
         end
 
         # evaluate the methods on all samples
-        for sample_index ∈ 0:(n_samples-1)
-            println("C=$(C); predicting sample $(sample_index+1)/$(n_samples)")
-            X_dev = read_sample(sample_index, sample_dir)
-            for (method_name, method) ∈ methods
-                outcome = [sample_index, method_name, C]
-                try
-                    p_hat = QUnfold.predict(method, X_dev)
-                    ae = mean(abs.(p_true[sample_index+1,:] - p_hat))
-                    rae = _rae(p_true[sample_index+1,:], p_hat, 1/(2*size(X_dev,1)))
-                    is_pdf = sum(p_hat) ≈ 1 && all(p_hat .> -sqrt(eps(Float64)))
-                    push!(outcome, ae, rae, is_pdf, "")
-                catch err
-                    if isa(err, QUnfold.NonOptimalStatusError)
-                        push!(outcome, NaN, NaN, false, string(err.termination_status))
-                    elseif isa(err, SingularException)
-                        push!(outcome, NaN, NaN, false, "SingularException")
-                    else
-                        rethrow()
-                    end
-                end
-                push!(df, outcome)
-            end
-        end
+        sample_indices = 0:(n_samples-1)
+        C_results = pmap(sample_evaluation_factory(n_samples, sample_dir, methods, C, p_true), sample_indices)
+        df = vcat(df, C_results...) # concatenate all DataFrames
     end
 
     # aggregations: performance metrics and failures
@@ -274,8 +300,4 @@ function parse_commandline()
             required = true
     end
     return parse_args(s; as_symbols=true)
-end
-
-if abspath(PROGRAM_FILE) == @__FILE__
-    main(; parse_commandline()...)
 end

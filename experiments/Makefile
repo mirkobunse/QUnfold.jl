@@ -4,16 +4,17 @@ _DATA=data/T1B/public/training_data.txt data/T1B/public/test_prevalences.txt dat
 _TRAINING_URL=https://zenodo.org/record/6546188/files/T1B.train_dev.zip?download=1
 _PREVALENCES_URL=https://zenodo.org/record/6546188/files/T1B.test_prevalences.zip?download=1
 _TEST_URL=https://zenodo.org/record/6546188/files/T1B.test.zip?download=1
+_JULIA=julia --procs auto --load $< --eval "main(; parse_commandline()...)" --
 
 results: $(_RESULTS)
 results/lequa.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
-	julia --project=. $< $@
+	$(_JULIA) $@
 results/lequa_validation.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
-	julia --project=. $< --is_validation_run $@
+	$(_JULIA) --is_validation_run $@
 
 tests: $(_TESTS)
 results/test_lequa.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
-	julia --project=. $< --is_validation_run --is_test_run $@
+	$(_JULIA) --is_validation_run --is_test_run $@
 
 data: $(_DATA)
 data/T1B/public/training_data.txt: data/train_dev.zip
