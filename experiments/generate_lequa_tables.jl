@@ -1,4 +1,4 @@
-using CSV, DataFrames, Printf
+using ArgParse, CSV, DataFrames, Printf
 
 select_best(df, metric) = combine(
         groupby(df, :method),
@@ -39,9 +39,10 @@ extract_method(x) = Dict(
 format_scores(x) =
     [ (x_i==minimum(x) ? "\$\\mathbf{" : "\${") * @sprintf("%.4f", x_i) * "}\$" for x_i ∈ x ]
 
-function table_for_metric(df, metric)
-    df = select_best(df, metric)
-    @info "Selected the best methods for the metric $(metric)" best=df
+function table_for_metric(df_val, df_tst, metric)
+    df_val = select_best(df_val, metric)
+    df = leftjoin(df_val[!,[:method, :C]], df_tst, on=[:method, :C]) # mirror the selection
+    @info "Selected the best methods for the metric $(metric)" df_val df
     matches = match.(r"(\w+)(?: \((\w+)\))?", df[!,:method]) # separate method from adjustment
     df[!,:adjustment] = extract_adjustment.(matches)
     df[!,:order] = extract_order.(matches)
@@ -53,29 +54,51 @@ function table_for_metric(df, metric)
     return df
 end
 
-function export_table(output_path, df)
-    open(output_path, "w") do io
-        println(io, "\\begin{tabular}{l$(repeat("c", size(df, 2)-1))}")
-        println(io, "  \\toprule")
-        println(io, "    ", join(names(df), " & "), " \\\\") # header
-        println(io, "  \\midrule")
-        for r in eachrow(df)
-            println(io, "    ", join(r, " & "), " \\\\")
-        end
-        println(io, "  \\bottomrule")
-        println(io, "\\end{tabular}")
+export_table(output_path, df) = open(output_path, "w") do io
+    println(io, "\\begin{tabular}{l$(repeat("c", size(df, 2)-1))}")
+    println(io, "  \\toprule")
+    println(io, "    ", join(names(df), " & "), " \\\\") # header
+    println(io, "  \\midrule")
+    for r in eachrow(df)
+        println(io, "    ", join(r, " & "), " \\\\")
     end
-    @info "LaTeX table exported to $(output_path)"
-    return nothing
+    println(io, "  \\bottomrule")
+    println(io, "\\end{tabular}")
 end
 
-df = CSV.read("results/lequa_validation.csv", DataFrame)
-@info "Configurations with failures" df[(df[!,:n_pdf_failures].>0) .| (df[!,:n_failures].>0),:]
-df = innerjoin(
-    table_for_metric(df, :ae),
-    table_for_metric(df, :rae),
-    on = :adjustment,
-    makeunique = true,
-    renamecols = Pair("; AE", "; RAE")
-)
-export_table("results/lequa_validation.tex", df[!,[1,2,4,3,5]]) # re-order columns
+function main(; validation_path::String="", testing_path::String="", output_path::String="")
+    @info "Reading from $(validation_path) and $(testing_path)"
+    df_val = CSV.read(validation_path, DataFrame)
+    df_tst = CSV.read(testing_path, DataFrame)
+    @info "Configurations with failures" df_val[(df_val[!,:n_pdf_failures].>0) .| (df_val[!,:n_failures].>0),:]
+    df = innerjoin(
+        table_for_metric(df_val, df_tst, :ae),
+        table_for_metric(df_val, df_tst, :rae),
+        on = :adjustment,
+        makeunique = true,
+        renamecols = Pair("; AE", "; RAE")
+    )
+    export_table(output_path, df[!,[1,2,4,3,5]]) # re-order columns
+    @info "LaTeX table exported to $(output_path)"
+end
+
+# command line interface
+function parse_commandline()
+    s = ArgParseSettings()
+    @add_arg_table s begin
+        "validation_path"
+            help = "the output path of the validation results"
+            required = true
+        "testing_path"
+            help = "the output path of the testing results"
+            required = true
+        "output_path"
+            help = "the output path for the LaTeX table"
+            required = true
+    end
+    return parse_args(s; as_symbols=true)
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    main(; parse_commandline()...)
+end

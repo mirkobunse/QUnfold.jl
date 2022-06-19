@@ -1,11 +1,18 @@
-_RESULTS=results/lequa.csv results/lequa_validation.csv
+_TABLES=results/lequa.tex results/lequa_validation.tex
+_EXPERIMENTS=results/lequa.csv results/lequa_validation.csv
 _TESTS=results/test_lequa.csv
 _DATA=data/T1B/public/training_data.txt data/T1B/public/test_prevalences.txt data/T1B/public/test_samples/4999.txt
 _TRAINING_URL=https://zenodo.org/record/6546188/files/T1B.train_dev.zip?download=1
 _PREVALENCES_URL=https://zenodo.org/record/6546188/files/T1B.test_prevalences.zip?download=1
 _TEST_URL=https://zenodo.org/record/6546188/files/T1B.test.zip?download=1
 
-results: $(_RESULTS)
+tables: $(_TABLES)
+results/lequa.tex: generate_lequa_tables.jl results/lequa_validation.csv results/lequa.csv
+	julia --project=. $^ $@
+results/lequa_validation.tex: generate_lequa_tables.jl results/lequa_validation.csv
+	julia --project=. $^ results/lequa_validation.csv $@
+
+experiments: $(_EXPERIMENTS)
 results/lequa.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
 	julia --project=. $< --n_samples 1000 $@
 results/lequa_validation.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
@@ -29,4 +36,4 @@ data/test_prevalences.zip:
 data/test.zip:
 	curl --fail --create-dirs --output $@ $(_TEST_URL)
 
-.PHONY: results tests data
+.PHONY: tables experiments tests data
