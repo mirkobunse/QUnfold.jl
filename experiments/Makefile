@@ -13,7 +13,7 @@ results/lequa_validation.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl"
 
 tests: $(_TESTS)
 results/test_lequa.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
-	julia --project=. $< --is_validation_run --is_test_run $@
+	julia --project=. $< --is_validation_run --is_test_run --n_samples 3 $@
 
 data: $(_DATA)
 data/T1B/public/training_data.txt: data/train_dev.zip

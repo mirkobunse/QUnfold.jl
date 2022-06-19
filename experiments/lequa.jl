@@ -139,7 +139,12 @@ _rae(p_true::Vector{Float64}, p_hat::Vector{Float64}, ϵ::Float64) =
 
 # experiment
 
-function main(; output_path::String="", is_validation_run::Bool=false, is_test_run::Bool=false)
+function main(;
+        output_path :: String = "",
+        is_validation_run :: Bool = false,
+        n_samples :: Int = -1,
+        is_test_run :: Bool = false,
+        )
     X_trn, y_trn = read_trn()
     n_classes = length(unique(y_trn))
     prevalence_path = "data/T1B/public/" * (is_validation_run ? "dev" : "test") * "_prevalences.txt"
@@ -159,12 +164,13 @@ function main(; output_path::String="", is_validation_run::Bool=false, is_test_r
     # configure the experiment
     C_values = [ 0.001, 0.01, 0.1, 1.0, 10.0 ]
     n_estimators = 100
-    n_samples = is_validation_run ? 1000 : 5000
+    if n_samples < 0
+        n_samples = is_validation_run ? 1000 : 5000 # default values
+    end
     if is_test_run
         @warn "This is a test run; results are not meaningful"
         C_values = [ 0.01, 0.1 ]
         n_estimators = 3
-        n_samples = 3
     end
 
     # grid search for the BaggingClassifier
@@ -266,6 +272,10 @@ function parse_commandline()
         "--is_validation_run", "-v"
             help = "whether this run should work on the validation set"
             action = :store_true
+        "--n_samples", "-n"
+            help = "the number of samples"
+            arg_type = Int
+            default = -1
         "--is_test_run", "-t"
             help = "whether this run is shortened for testing purposes"
             action = :store_true
