@@ -139,7 +139,19 @@ _rae(p_true::Vector{Float64}, p_hat::Vector{Float64}, ϵ::Float64) =
 
 # experiment
 
-function main(; output_path::String="", is_validation_run::Bool=false, is_test_run::Bool=false)
+function _methods_from_validation(path::String, C::Float64, metrics::Vector{Symbol}=[:ae, :rae])
+    df = CSV.read(path, DataFrame)
+    df = vcat([combine( # select best methods according to all metrics
+            groupby(df, :method),
+            sdf -> begin
+                sdf2 = sdf[.!(ismissing.(sdf[!,metric])),:]
+                nrow(sdf2) > 0 ? sdf2[argmin(sdf2[!,metric]),:] : sdf[1,:]
+            end
+        ) for metric in metrics]...)
+    return unique(df[df[!,:C] .== C,:method])
+end
+
+function main(; output_path::String="", is_validation_run::Bool=false, methods_from_validation::String="", is_test_run::Bool=false)
     X_trn, y_trn = read_trn()
     n_classes = length(unique(y_trn))
     prevalence_path = "data/T1B/public/" * (is_validation_run ? "dev" : "test") * "_prevalences.txt"
@@ -196,6 +208,14 @@ function main(; output_path::String="", is_validation_run::Bool=false, is_test_r
                 "PACC (ovr)" => PACC(c; strategy=:ovr, fit_classifier=false),
                 "PCC" => PCC(c; fit_classifier=false),
             ]
+            if methods_from_validation != ""
+                if method_name ∉ _methods_from_validation(methods_from_validation, C)
+                    println("Skipping $(method_name) for C=$(C)")
+                    continue
+                else
+                    println("Keeping $(method_name) for C=$(C)")
+                end
+            end
             push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
         end
 
@@ -266,6 +286,9 @@ function parse_commandline()
         "--is_validation_run", "-v"
             help = "whether this run should work on the validation set"
             action = :store_true
+        "--methods_from_validation", "-s"
+            help = "optional validation results file to select the best methods from"
+            default = ""
         "--is_test_run", "-t"
             help = "whether this run is shortened for testing purposes"
             action = :store_true

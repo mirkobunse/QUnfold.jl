@@ -6,8 +6,8 @@ _PREVALENCES_URL=https://zenodo.org/record/6546188/files/T1B.test_prevalences.zi
 _TEST_URL=https://zenodo.org/record/6546188/files/T1B.test.zip?download=1
 
 results: $(_RESULTS)
-results/lequa.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
-	julia --project=. $< $@
+results/lequa.csv: lequa.jl results/lequa_validation.csv $(_DATA) $(shell find ../src -name "*.jl")
+	julia --project=. $< --methods_from_validation results/lequa_validation.csv $@
 results/lequa_validation.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
 	julia --project=. $< --is_validation_run $@
 
