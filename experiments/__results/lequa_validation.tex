@@ -1,0 +1,12 @@
+\begin{tabular}{lcccc}
+  \toprule
+    adjustment & ACC / CC; AE & ACC / CC; RAE & PACC / PCC; AE & PACC / PCC; RAE \\
+  \midrule
+    un-adjusted (Eq.~\ref{eq:binary-cc} / Eq.~\ref{eq:binary-pcc}) & ${0.0253}$ & ${2.6231}$ & ${0.0246}$ & ${2.7547}$ \\
+    one-vs-rest (Eq.~\ref{eq:ovr}) & ${0.0263}$ & ${4.2460}$ & ${0.0263}$ & ${4.2460}$ \\
+    inverse (Eq.~\ref{eq:inv}) & ${0.0225}$ & ${1.8509}$ & ${0.0193}$ & ${1.6057}$ \\
+    pseudo-inverse (Eq.~\ref{eq:pinv}) & ${0.0182}$ & ${1.8509}$ & ${0.0193}$ & ${1.6057}$ \\
+    constrained (Eq.~\ref{eq:constrained}) & ${0.0158}$ & $\mathbf{1.3163}$ & ${0.0121}$ & $\mathbf{1.0376}$ \\
+    soft-max (Eq.~\ref{eq:softmax}) & $\mathbf{0.0130}$ & ${1.3237}$ & $\mathbf{0.0105}$ & ${1.1181}$ \\
+  \bottomrule
+\end{tabular}
