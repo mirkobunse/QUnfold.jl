@@ -40,6 +40,8 @@ struct ClassTransformer <: AbstractTransformer
     classifier::Any
     is_probabilistic::Bool
     fit_classifier::Bool
+    ClassTransformer(classifier::Any; is_probabilistic::Bool=false, fit_classifier::Bool=true) =
+        new(classifier, is_probabilistic, fit_classifier)
 end
 
 struct FittedClassTransformer <: FittedTransformer

@@ -100,17 +100,23 @@ end # testset
 
     c = RandomForestClassifier(; oob_score=true, random_state=rand(UInt32))
     ScikitLearn.fit!(c, X_trn, y_trn)
+    t = ClassTransformer(c; fit_classifier=false)
     for (name, method) in [
-            "ACC (constrained)" => ACC(c; fit_classifier=false),
+            "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
             "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
             "ACC (pinv)" => ACC(c; strategy=:pinv, fit_classifier=false),
             "ACC (inv)" => ACC(c; strategy=:inv, fit_classifier=false),
             "CC" => CC(c; fit_classifier=false),
-            "PACC (constrained)" => PACC(c; fit_classifier=false),
+            "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
             "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
             "PACC (pinv)" => PACC(c; strategy=:pinv, fit_classifier=false),
             "PACC (inv)" => PACC(c; strategy=:inv, fit_classifier=false),
             "PCC" => PCC(c; fit_classifier=false),
+            "RUN (constrained, τ=1e-6)" => RUN(t; strategy=:constrained, τ=1e-6),
+            "RUN (softmax, τ=1e-6)" => RUN(t; strategy=:softmax, τ=1e-6),
+            "RUN (constrained, τ=10.0)" => RUN(t; strategy=:constrained, τ=10.0),
+            "RUN (softmax, τ=10.0)" => RUN(t; strategy=:softmax, τ=10.0),
+            # "RUN (unconstrained, τ=10.0)" => RUN(t; strategy=:unconstrained, τ=10.0),
         ]
         @info name p_hat=QUnfold.predict(QUnfold.fit(method, X_trn, y_trn), X_tst)
     end

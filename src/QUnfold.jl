@@ -2,7 +2,7 @@ module QUnfold
 
 using LinearAlgebra, StatsBase
 
-export fit, predict, ACC, CC, PACC, PCC
+export fit, predict, ACC, CC, ClassTransformer, PACC, PCC, RUN
 
 include("transformers.jl")
 include("solvers.jl")
@@ -28,12 +28,13 @@ _transformer(m::AbstractMethod) =
     error("_transformer not implemented for $(typeof(m))")
 
 """
-    _solve(m, M, q, p_trn)
+    _solve(m, M, q, p_trn, N)
 
 Solve the optimization task defined by the transfer matrix `M`, the observed
-histogram `q`, and the training prevalences `p_trn` with the QUnfold method `m`.
+histogram `q`, the training prevalences `p_trn`, and the number `N` of samples
+with the QUnfold method `m`.
 """
-_solve(m::AbstractMethod, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}) =
+_solve(m::AbstractMethod, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     error("_solve not implemented for $(typeof(m))")
 
 """
@@ -57,7 +58,7 @@ end
 Predict the class prevalences in the data set `X` with the fitted method `m`.
 """
 predict(m::FittedMethod, X::Any) =
-    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn)
+    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1))
 
 
 # utility methods
@@ -86,9 +87,13 @@ CC(c::Any; fit_classifier::Bool=true) =
 PCC(c::Any; fit_classifier::Bool=true) =
     _ACC(c, :none, true, fit_classifier)
 
-_transformer(m::_ACC) = ClassTransformer(m.classifier, m.is_probabilistic, m.fit_classifier)
+_transformer(m::_ACC) = ClassTransformer(
+        m.classifier;
+        is_probabilistic = m.is_probabilistic,
+        fit_classifier = m.fit_classifier
+    )
 
-_solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}) =
+_solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     if m.strategy ∈ [:constrained, :softmax]
         solve_least_squares(M, q, m.strategy)
     elseif m.strategy == :pinv
@@ -105,6 +110,20 @@ _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}) 
     else
         error("There is no strategy \"$(m.strategy)\"")
     end
+
+
+# RUN
+
+struct RUN <: AbstractMethod
+    transformer::AbstractTransformer
+    τ::Float64 # regularization strength
+    strategy::Symbol # ∈ {:constrained, :softmax, :unconstrained}
+    RUN(transformer::AbstractTransformer; τ::Float64=1e-6, strategy=:constrained) =
+        new(transformer, τ, strategy)
+end
+_transformer(m::RUN) = m.transformer
+_solve(m::RUN, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
+    solve_maximum_likelihood(M, q, N, m.τ, m.strategy)
 
 
 end # module
