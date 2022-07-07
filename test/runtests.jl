@@ -84,7 +84,7 @@ def paccPteCondEstim(classes, y, y_):
     @info "M_pacc" M_pacc M_pacc_quapy
 end # testset
 
-@testset "ACC / PACC" begin
+@testset "Execution of all methods" begin
     M = diagm(
         0 => rand(3) * .7 .+ .1,
         1 => rand(2) * .05 .+ .025,
@@ -102,11 +102,13 @@ end # testset
     ScikitLearn.fit!(c, X_trn, y_trn)
     t = ClassTransformer(c; fit_classifier=false)
     for (name, method) in [
+            "o-ACC (constrained, τ=10.0)" => ACC(c; τ=10.0, strategy=:constrained, fit_classifier=false),
             "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
             "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
             "ACC (pinv)" => ACC(c; strategy=:pinv, fit_classifier=false),
             "ACC (inv)" => ACC(c; strategy=:inv, fit_classifier=false),
             "CC" => CC(c; fit_classifier=false),
+            "o-PACC (constrained, τ=10.0)" => PACC(c; τ=10.0, strategy=:constrained, fit_classifier=false),
             "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
             "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
             "PACC (pinv)" => PACC(c; strategy=:pinv, fit_classifier=false),
