@@ -1,16 +1,32 @@
 using JuMP
 import Ipopt, MathOptInterface.TerminationStatusCode
 
+
+# utilities
+
 struct NonOptimalStatusError <: Exception
     termination_status::TerminationStatusCode
 end
 Base.showerror(io::IO, x::NonOptimalStatusError) =
     print(io, "NonOptimalStatusError(", x.termination_status, ")")
 
+function _check_termination_status(model::Model, strategy::Symbol)
+    status = termination_status(model)
+    if status == INTERRUPTED
+        throw(InterruptException())
+    elseif status ∉ [LOCALLY_SOLVED, OPTIMAL, ALMOST_LOCALLY_SOLVED, ALMOST_OPTIMAL]
+        @error "Non-optimal status after optimization" strategy status
+        throw(NonOptimalStatusError(status))
+    end
+end
+
+
+# solvers
+
 function solve_least_squares(M::Matrix, q::Vector{Float64}; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
     model = Model(Ipopt.Optimizer)
     set_silent(model)
-    F, C = size(M) # the numbers of classes and features
+    F, C = size(M) # the numbers of features and classes
     T = LinearAlgebra.diagm( # the Tikhonov matrix for optional curvature regularization
         -1 => fill(-1, C-1),
         0 => fill(2, C),
@@ -49,10 +65,11 @@ function solve_least_squares(M::Matrix, q::Vector{Float64}; w::Vector{Float64}=o
     end
 end
 
+
 function solve_maximum_likelihood(M::Matrix, q::Vector{Float64}, N::Int; τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
     model = Model(Ipopt.Optimizer)
     set_silent(model)
-    F, C = size(M) # the numbers of classes and features
+    F, C = size(M) # the numbers of features and classes
     T = LinearAlgebra.diagm( # the Tikhonov matrix for curvature regularization
         -1 => fill(-1, C-1),
         0 => fill(2, C),
@@ -95,12 +112,41 @@ function solve_maximum_likelihood(M::Matrix, q::Vector{Float64}, N::Int; τ::Flo
     end
 end
 
-function _check_termination_status(model::Model, strategy::Symbol)
-    status = termination_status(model)
-    if status == INTERRUPTED
-        throw(InterruptException())
-    elseif status ∉ [LOCALLY_SOLVED, OPTIMAL, ALMOST_LOCALLY_SOLVED, ALMOST_OPTIMAL]
-        @error "Non-optimal status after optimization" strategy status
-        throw(NonOptimalStatusError(status))
+
+function solve_hellinger_distance(M::Matrix, q::Vector{Float64}, n_bins::Int; strategy::Symbol=:constrained, λ::Float64=1e-6)
+    model = Model(Ipopt.Optimizer)
+    set_silent(model)
+    F, C = size(M) # the numbers of "multi-features" and classes
+    n_features = Int(F / n_bins) # the number of actual features in X
+
+    # set up the solution vector p
+    if strategy == :softmax
+        @variable(model, l[1:C]) # latent variables (unconstrained)
+        @NLexpression(model, p[i = 1:C], exp(l[i]) / sum(exp(l[j]) for j in 1:C)) # p = softmax(l)
+        @NLexpression(model, softmax_regularizer, λ * sum(l[j]^2 for j in 1:C))
+    elseif strategy == :constrained
+        @variable(model, p[1:C] ≥ 0) # p_i ≥ 0
+        @NLconstraint(model, sum(p[i] for i in 1:C) == 1)
+        @NLexpression(model, softmax_regularizer, 0.0) # do not use soft-max regularization
+    else
+        error("There is no strategy \"$(strategy)\"")
+    end
+
+    # average feature-wise Hellinger distance
+    @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * p[j] for j in 1:C))
+    @NLexpression(model, squared[i = 1:F], (sqrt(q[i]) - sqrt(Mp[i]))^2)
+    @NLexpression(model, HD[i = 1:n_features], sqrt(sum((squared[j] for j in (1+(i-1)*n_bins):(i*n_bins)))))
+    @NLobjective(model, Min,
+        sum(HD[i] for i in 1:n_features) / n_features # loss function
+        + softmax_regularizer # optional soft-max regularization
+    )
+
+    # solve and return
+    optimize!(model)
+    _check_termination_status(model, strategy)
+    if strategy == :softmax
+        return exp.(value.(l)) ./ sum(exp.(value.(l)))
+    elseif strategy == :constrained
+        return value.(p)
     end
 end

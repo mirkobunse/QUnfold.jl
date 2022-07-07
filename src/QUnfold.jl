@@ -2,7 +2,7 @@ module QUnfold
 
 using LinearAlgebra, StatsBase
 
-export fit, predict, ACC, CC, ClassTransformer, PACC, PCC, RUN, SVD
+export ACC, CC, ClassTransformer, fit, HDx, HDy, PACC, PCC, predict, RUN, SVD
 
 include("transformers.jl")
 include("solvers.jl")
@@ -162,6 +162,6 @@ _transformer(m::HDy) = HistogramTransformer(
         )
     )
 _solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
-    solve_hellinger_distance(M, q, m.n_bins)
+    solve_hellinger_distance(M, q, m.n_bins; strategy=m.strategy)
 
 end # module

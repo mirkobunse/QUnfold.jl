@@ -100,14 +100,16 @@ end
 function _fit_transform(t::HistogramTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
     preprocessor, X, y = _fit_transform(t.preprocessor, X, y)
     f = FittedHistogramTransformer(hcat(_edges.(eachcol(X), t.n_bins)...), preprocessor)
-    return f, _transform(f, X), y
+    return f, _transform(f, X; apply_preprocessor=false), y
 end
 
 _edges(x::AbstractVector{T}, n_bins::Int) where {T<:Real} =
     collect(1:(n_bins-1)) .* (maximum(x) - minimum(x)) / n_bins .+ minimum(x)
 
-function _transform(f::FittedHistogramTransformer, X::Any)
-    X = _transform(f.preprocessor, X)
+function _transform(f::FittedHistogramTransformer, X::Any; apply_preprocessor::Bool=true)
+    if apply_preprocessor
+        X = _transform(f.preprocessor, X)
+    end
     n_bins = size(f.edges, 1) + 1
     fX = zeros(Int, size(X, 1), n_bins * size(X, 2))
     for j in 1:size(X, 2) # feature index

@@ -122,6 +122,10 @@ end # testset
             "SVD (softmax, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax, τ=1e-6),
             "SVD (constrained, τ=10.0)" => QUnfold.SVD(t; strategy=:constrained, τ=10.0),
             "SVD (softmax, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax, τ=10.0),
+            "HDx (constrained)" => HDx(3; strategy=:constrained),
+            "HDx (softmax)" => HDx(3; strategy=:softmax),
+            "HDy (constrained)" => HDy(c, 3; strategy=:constrained, fit_classifier=false),
+            "HDy (softmax)" => HDy(c, 3; strategy=:softmax, fit_classifier=false),
             # "RUN (unconstrained, τ=10.0)" => RUN(t; strategy=:unconstrained, τ=10.0),
         ]
         @info name p_hat=QUnfold.predict(QUnfold.fit(method, X_trn, y_trn), X_tst)
