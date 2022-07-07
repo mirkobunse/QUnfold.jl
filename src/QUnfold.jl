@@ -141,16 +141,18 @@ _svd_weights(q::Vector{Float64}) = sqrt.(q) / mean(sqrt.(q))
 
 struct HDx <: AbstractMethod
     n_bins::Int
+    τ::Float64 # regularization strength
     strategy::Symbol # ∈ {:constrained, :softmax}
-    HDx(n_bins::Int; strategy=:constrained) = new(n_bins, strategy)
+    HDx(n_bins::Int; τ::Float64=0.0, strategy=:constrained) = new(n_bins, τ, strategy)
 end
 struct HDy <: AbstractMethod
     classifier::Any
     n_bins::Int
+    τ::Float64 # regularization strength
     strategy::Symbol # ∈ {:constrained, :softmax}
     fit_classifier::Bool
-    HDy(classifier::Any, n_bins::Int; strategy=:constrained, fit_classifier::Bool=true) =
-        new(classifier, n_bins, strategy, fit_classifier)
+    HDy(classifier::Any, n_bins::Int; τ::Float64=0.0, strategy=:constrained, fit_classifier::Bool=true) =
+        new(classifier, n_bins, τ, strategy, fit_classifier)
 end
 _transformer(m::HDx) = HistogramTransformer(m.n_bins)
 _transformer(m::HDy) = HistogramTransformer(
@@ -162,6 +164,6 @@ _transformer(m::HDy) = HistogramTransformer(
         )
     )
 _solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
-    solve_hellinger_distance(M, q, m.n_bins; strategy=m.strategy)
+    solve_hellinger_distance(M, q, m.n_bins; τ=m.τ, strategy=m.strategy)
 
 end # module

@@ -113,11 +113,16 @@ function solve_maximum_likelihood(M::Matrix, q::Vector{Float64}, N::Int; τ::Flo
 end
 
 
-function solve_hellinger_distance(M::Matrix, q::Vector{Float64}, n_bins::Int; strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_hellinger_distance(M::Matrix, q::Vector{Float64}, n_bins::Int; τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
     model = Model(Ipopt.Optimizer)
     set_silent(model)
     F, C = size(M) # the numbers of "multi-features" and classes
     n_features = Int(F / n_bins) # the number of actual features in X
+    T = LinearAlgebra.diagm( # the Tikhonov matrix for curvature regularization
+        -1 => fill(-1, C-1),
+        0 => fill(2, C),
+        1 => fill(-1, C-1)
+    )[2:(C-1), :]
 
     # set up the solution vector p
     if strategy == :softmax
@@ -136,8 +141,10 @@ function solve_hellinger_distance(M::Matrix, q::Vector{Float64}, n_bins::Int; st
     @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * p[j] for j in 1:C))
     @NLexpression(model, squared[i = 1:F], (sqrt(q[i]) - sqrt(Mp[i]))^2)
     @NLexpression(model, HD[i = 1:n_features], sqrt(sum((squared[j] for j in (1+(i-1)*n_bins):(i*n_bins)))))
+    @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p[j] for j in 1:C))
     @NLobjective(model, Min,
         sum(HD[i] for i in 1:n_features) / n_features # loss function
+        + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
         + softmax_regularizer # optional soft-max regularization
     )
 
