@@ -14,7 +14,7 @@ results/lequa_validation.tex: generate_lequa_tables.jl results/lequa_validation.
 
 experiments: $(_EXPERIMENTS)
 results/lequa.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
-	julia --project=. $< --n_samples 1000 $@
+	julia --project=. $< $@
 results/lequa_validation.csv: lequa.jl $(_DATA) $(shell find ../src -name "*.jl")
 	julia --project=. $< --is_validation_run $@
 
