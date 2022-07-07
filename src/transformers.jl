@@ -87,14 +87,19 @@ _transform(f::FittedClassTransformer, X::Any) =
 
 struct HistogramTransformer <: AbstractTransformer
     n_bins::Int
+    preprocessor::Union{AbstractTransformer,Nothing}
+    HistogramTransformer(n_bins::Int; preprocessor::Union{AbstractTransformer,Nothing}=nothing) =
+        new(n_bins, preprocessor)
 end
 
 struct FittedHistogramTransformer <: FittedTransformer
     edges::Matrix{Float64} # shape (n_bins-1, n_features)
+    preprocessor::Union{FittedTransformer,Nothing}
 end
 
 function _fit_transform(t::HistogramTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
-    f = FittedHistogramTransformer(hcat(_edges.(eachcol(X), t.n_bins)...))
+    preprocessor, X, y = _fit_transform(t.preprocessor, X, y)
+    f = FittedHistogramTransformer(hcat(_edges.(eachcol(X), t.n_bins)...), preprocessor)
     return f, _transform(f, X), y
 end
 
@@ -102,6 +107,7 @@ _edges(x::AbstractVector{T}, n_bins::Int) where {T<:Real} =
     collect(1:(n_bins-1)) .* (maximum(x) - minimum(x)) / n_bins .+ minimum(x)
 
 function _transform(f::FittedHistogramTransformer, X::Any)
+    X = _transform(f.preprocessor, X)
     n_bins = size(f.edges, 1) + 1
     fX = zeros(Int, size(X, 1), n_bins * size(X, 2))
     for j in 1:size(X, 2) # feature index
@@ -113,3 +119,6 @@ function _transform(f::FittedHistogramTransformer, X::Any)
     end
     return fX
 end
+
+_fit_transform(t::Nothing, X::Any, y::AbstractVector{T}) where {T<:Integer} = t, X, y
+_transform(f::Nothing, X::Any) = X

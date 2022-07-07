@@ -136,4 +136,32 @@ _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float6
     end
 _svd_weights(q::Vector{Float64}) = sqrt.(q) / mean(sqrt.(q))
 
+
+# HDx and HDy
+
+struct HDx <: AbstractMethod
+    n_bins::Int
+    strategy::Symbol # ∈ {:constrained, :softmax}
+    HDx(n_bins::Int; strategy=:constrained) = new(n_bins, strategy)
+end
+struct HDy <: AbstractMethod
+    classifier::Any
+    n_bins::Int
+    strategy::Symbol # ∈ {:constrained, :softmax}
+    fit_classifier::Bool
+    HDy(classifier::Any, n_bins::Int; strategy=:constrained, fit_classifier::Bool=true) =
+        new(classifier, n_bins, strategy, fit_classifier)
+end
+_transformer(m::HDx) = HistogramTransformer(m.n_bins)
+_transformer(m::HDy) = HistogramTransformer(
+        m.n_bins;
+        preprocessor = ClassTransformer(
+            m.classifier;
+            is_probabilistic = true,
+            fit_classifier = m.fit_classifier
+        )
+    )
+_solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
+    solve_hellinger_distance(M, q, m.n_bins)
+
 end # module
