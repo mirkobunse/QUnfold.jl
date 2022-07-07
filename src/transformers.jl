@@ -34,6 +34,7 @@ Map an array of labels / crisp predictions `y` to a one-hot encoded indicator ma
 """
 onehot_encoding(y, classes=unique(y)) = Float64.(permutedims(classes) .== y)
 
+
 # classification-based feature transformation
 
 struct ClassTransformer <: AbstractTransformer
@@ -80,3 +81,35 @@ _transform(f::FittedClassTransformer, X::Any) =
             ScikitLearnBase.get_classes(f.classifier)
         )
     end
+
+
+# histogram-based feature transformation
+
+struct HistogramTransformer <: AbstractTransformer
+    n_bins::Int
+end
+
+struct FittedHistogramTransformer <: FittedTransformer
+    edges::Matrix{Float64} # shape (n_bins-1, n_features)
+end
+
+function _fit_transform(t::HistogramTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
+    f = FittedHistogramTransformer(hcat(_edges.(eachcol(X), t.n_bins)...))
+    return f, _transform(f, X), y
+end
+
+_edges(x::AbstractVector{T}, n_bins::Int) where {T<:Real} =
+    collect(1:(n_bins-1)) .* (maximum(x) - minimum(x)) / n_bins .+ minimum(x)
+
+function _transform(f::FittedHistogramTransformer, X::Any)
+    n_bins = size(f.edges, 1) + 1
+    fX = zeros(Int, size(X, 1), n_bins * size(X, 2))
+    for j in 1:size(X, 2) # feature index
+        edges = f.edges[:,j]
+        offset = (j-1) * n_bins
+        for i in 1:size(X, 1) # sample index
+            fX[i, offset + searchsortedfirst(edges, X[i,j])] = 1
+        end
+    end
+    return fX
+end
