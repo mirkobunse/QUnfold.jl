@@ -2,7 +2,7 @@ module QUnfold
 
 using LinearAlgebra, StatsBase
 
-export fit, predict, ACC, CC, ClassTransformer, PACC, PCC, RUN
+export fit, predict, ACC, CC, ClassTransformer, PACC, PCC, RUN, SVD
 
 include("transformers.jl")
 include("solvers.jl")
@@ -95,7 +95,7 @@ _transformer(m::_ACC) = ClassTransformer(
 
 _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     if m.strategy ∈ [:constrained, :softmax]
-        solve_least_squares(M, q, m.strategy)
+        solve_least_squares(M, q; strategy=m.strategy)
     elseif m.strategy == :pinv
         clip_and_normalize(pinv(M) * q)
     elseif m.strategy == :inv
@@ -112,18 +112,27 @@ _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, 
     end
 
 
-# RUN
+# RUN and SVD
 
-struct RUN <: AbstractMethod
+struct _RUN_SVD <: AbstractMethod
     transformer::AbstractTransformer
+    loss::Symbol # ∈ {:run, :svd}
     τ::Float64 # regularization strength
     strategy::Symbol # ∈ {:constrained, :softmax, :unconstrained}
-    RUN(transformer::AbstractTransformer; τ::Float64=1e-6, strategy=:constrained) =
-        new(transformer, τ, strategy)
 end
-_transformer(m::RUN) = m.transformer
-_solve(m::RUN, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
-    solve_maximum_likelihood(M, q, N, m.τ, m.strategy)
-
+RUN(transformer::AbstractTransformer; τ::Float64=1e-6, strategy=:constrained) =
+    _RUN_SVD(transformer, :run, τ, strategy)
+SVD(transformer::AbstractTransformer; τ::Float64=1e-6, strategy=:constrained) =
+    _RUN_SVD(transformer, :svd, τ, strategy)
+_transformer(m::_RUN_SVD) = m.transformer
+_solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
+    if m.loss == :run
+        solve_maximum_likelihood(M, q, N; τ=m.τ, strategy=m.strategy)
+    elseif m.loss == :svd
+        solve_least_squares(M, q; w=_svd_weights(q), τ=m.τ, strategy=m.strategy) # weighted least squares
+    else
+        error("There is no loss \"$(m.loss)\"")
+    end
+_svd_weights(q::Vector{Float64}) = sqrt.(q) / mean(sqrt.(q))
 
 end # module
