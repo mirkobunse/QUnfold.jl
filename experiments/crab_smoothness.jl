@@ -32,23 +32,17 @@ end
 
 function sample_poisson(N) # add and subtract one Poisson std to obtain error bars
     y = magic_crab_flux(bin_centers)
-    p = y .* df_acceptance[2:end-1,:a_eff]
-    λ = p * N ./ sum(p) # Poisson rates for N events in total
-    random_sample = [ rand(Poisson(λ_i)) for λ_i in λ ]
-    return plot_histogram(random_sample ./ N .* sum(p) ./ df_acceptance[2:end-1,:a_eff])
+    y_acc = y .* df_acceptance[2:end-1,:a_eff]
+    λ = y_acc * (N-length(y)) ./ sum(y_acc) # Poisson rates for N events in total
+    random_sample = [ 1 + rand(Poisson(λ_i)) for λ_i in λ ]
+    p = random_sample ./ df_acceptance[2:end-1,:a_eff] ./ sum(random_sample ./ df_acceptance[2:end-1,:a_eff]) # probability
+    @info "Probability" p log10.(p)
+    return Plots.Linear(1:length(p), log10.(p))
 end
 
 
 
 function main()
-    plot = Axis(
-        Plots.Linear(magic_crab_flux, (10^2.4, 10^4.8)); # magic spectrum
-        style = "xmode=log, ymode=log, enlarge x limits=.0425, enlarge y limits=.0425"
-    )
-    # push!(plot, plot_histogram(magic_crab_flux(bin_centers)))
-    # push!(plot, plot_histogram(magic_crab_flux(bin_centers) .* df_acceptance[2:end-1,:a_eff]))
-    push!(plot, sample_poisson(5000))
-    push!(plot, sample_poisson(5000))
-    push!(plot, sample_poisson(5000))
+    plot = Axis([sample_poisson(1000) for _ in 1:3])
     save("results/crab_smoothness.pdf", plot)
 end
