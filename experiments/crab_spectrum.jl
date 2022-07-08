@@ -10,14 +10,17 @@ magic_crab_flux(x) = @. 3.23e-10 * (x/1e3)^(-2.47 - 0.24 * log10(x/1e3))
 
 
 
+# our bins
 df_acceptance = CSV.read("data/fact/acceptance.csv", DataFrame)
 bin_centers = df_acceptance[2:end-1,:bin_center]
 bin_edges = vcat(df_acceptance[2:end-1,:e_min], df_acceptance[end-1,:e_max])
 
+# # Bins by Max Nöthe
+#
 # bin_centers = 10 .^ collect(2.8:0.2:4.4)
 # bin_edges = 10 .^ collect(2.7:0.2:4.5)
 
-function plot_histogram(p)
+function plot_histogram(p) # plot a dis-continuous step function
     x = [NaN]
     y = [NaN]
     for i in 1:length(p)
@@ -27,10 +30,10 @@ function plot_histogram(p)
     return Plots.Linear(x, y; style="mark=none, unbounded coords=jump")
 end
 
-plot_error_bars(y_high, y_low) =
+plot_error_bars(y_high, y_low) = # plot bars at bin_edges from y_high to y_low
     [ Plots.Command("\\draw[|-|] ($x,$h) -- ($x,$l)") for (x, h, l) in zip(bin_centers, y_high, y_low) ]
 
-function plot_poisson_sample(N)
+function plot_poisson_sample(N) # add and subtract one Poisson std to obtain error bars
     y = magic_crab_flux(bin_centers)
     p = y .* df_acceptance[2:end-1,:a_eff]
     λ = p * N ./ sum(p) # Poisson rates for N events in total
@@ -50,5 +53,5 @@ function main()
     push!(plot, plot_histogram(magic_crab_flux(bin_centers)))
     # push!(plot, plot_histogram(magic_crab_flux(bin_centers) .* df_acceptance[2:end-1,:a_eff]))
     push!(plot, plot_poisson_sample(5000)...)
-    save("results/crab_smoothness.pdf", plot)
+    save("results/crab_spectrum.pdf", plot)
 end
