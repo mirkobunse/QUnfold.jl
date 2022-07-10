@@ -1,4 +1,4 @@
-using CSV, DataFrames, Distributions, Statistics, PGFPlots
+using CSV, DataFrames, Discretizers, Distributions, Statistics, PGFPlots
 
 """
     magic_crab_flux(x)
@@ -13,7 +13,7 @@ magic_crab_flux(x) = @. 3.23e-10 * (x/1e3)^(-2.47 - 0.24 * log10(x/1e3))
 # our bins
 df_acceptance = CSV.read("data/fact/acceptance.csv", DataFrame)
 bin_centers = df_acceptance[2:end-1,:bin_center]
-bin_edges = vcat(df_acceptance[2:end-1,:e_min], df_acceptance[end-1,:e_max])
+bin_edges = disallowmissing(vcat(df_acceptance[2:end-1,:e_min], df_acceptance[end-1,:e_max]))
 
 # # Bins by Max Nöthe
 #
@@ -45,6 +45,17 @@ end
 
 
 
+# simulated, labeled data
+df = DataFrames.disallowmissing!(CSV.read("data/fact/fact_wobble.csv", DataFrame))
+y = encode(
+    LinearDiscretizer(log10.(bin_edges)),
+    df[!, :log10_energy]
+)
+p_trn = [ sum(y .== i) / length(y) for i in 1:length(bin_centers) ]
+training_spectrum = p_trn .* sum(magic_crab_flux(bin_centers) .* df_acceptance[2:end-1,:a_eff]) ./ df_acceptance[2:end-1,:a_eff]
+
+
+
 function main()
     plot = Axis(
         Plots.Linear(magic_crab_flux, (10^2.4, 10^4.8)); # magic spectrum
@@ -53,5 +64,6 @@ function main()
     push!(plot, plot_histogram(magic_crab_flux(bin_centers)))
     # push!(plot, plot_histogram(magic_crab_flux(bin_centers) .* df_acceptance[2:end-1,:a_eff]))
     push!(plot, plot_poisson_sample(5000)...)
+    push!(plot, plot_histogram(training_spectrum))
     save("results/crab_spectrum.pdf", plot)
 end
