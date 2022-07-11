@@ -17,7 +17,8 @@ const BIN_EDGES = Ref{Vector{Float64}}()
 const P_TRN = Ref{Vector{Float64}}()
 
 function __init__()
-    df_acceptance = CSV.read("data/fact/acceptance.csv", DataFrame)
+    fact_dir = "$(dirname(@__DIR__))/data/fact"
+    df_acceptance = CSV.read("$(fact_dir)/acceptance.csv", DataFrame)
     A_EFF[] = df_acceptance[2:end-1, :a_eff]
     BIN_CENTERS[] = df_acceptance[2:end-1, :bin_center]
     BIN_EDGES[] = disallowmissing(vcat(
@@ -29,7 +30,7 @@ function __init__()
     # BIN_CENTERS[] = 10 .^ collect(2.8:0.2:4.4)
     # BIN_EDGES[] = 10 .^ collect(2.7:0.2:4.5)
 
-    df_data = DataFrames.disallowmissing!(CSV.read("data/fact/fact_wobble.csv", DataFrame))
+    df_data = DataFrames.disallowmissing!(CSV.read("$(fact_dir)/fact_wobble.csv", DataFrame))
     y = encode( # labels of the simulated data
         LinearDiscretizer(log10.(BIN_EDGES[])),
         df_data[!, :log10_energy]
@@ -103,10 +104,10 @@ end
 Compute a logarithmic acceptance-corrected spectrum from a prevalence vector `p`. The
 spectrum is, again, normalized to a probability density.
 """
-function to_log10_spectrum_density(N::Int, a::AbstractVector{T}) where T<:Number
-    p = a ./ A_EFF[]
-    p = log10.(1 .+ p ./ sum(p) .* (N-length(p)))
-    return p ./ sum(p)
+function to_log10_spectrum_density(N::Int, p::AbstractVector{T}) where T<:Number
+    q = p ./ A_EFF[]
+    q = log10.(1 .+ q ./ sum(q) .* (N-length(q)))
+    return q ./ sum(q)
 end
 
 """
@@ -114,16 +115,13 @@ end
 
 Compute the curvature `1/2 * (T * p)^2` of the probability density `p`.
 """
-function curvature(p::Vector{T}) where T<:Number
+function curvature(p::AbstractVector{T}) where T<:Number
     t = LinearAlgebra.diagm( # Tikhonov matrix
         -1 => fill(-1, length(BIN_CENTERS[])-1),
         0 => fill(2, length(BIN_CENTERS[])),
         1 => fill(-1, length(BIN_CENTERS[])-1)
     )[2:(length(BIN_CENTERS[])-1), :]
-    return sum([
-        sum(t[i, j] * p[j] for j in 1:length(BIN_CENTERS[]))^2
-        for i in 1:(length(BIN_CENTERS[])-2)
-    ]) / 2
+    return (t * p)' * (t * p) / 2 # 1/2 (Tp)^2
 end
 
 """
