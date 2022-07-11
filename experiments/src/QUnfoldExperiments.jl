@@ -14,6 +14,8 @@ using
 const A_EFF = Ref{Vector{Float64}}()
 const BIN_CENTERS = Ref{Vector{Float64}}()
 const BIN_EDGES = Ref{Vector{Float64}}()
+const FACT_X = Ref{Matrix{Float32}}()
+const FACT_Y = Ref{Vector{Int32}}()
 const P_TRN = Ref{Vector{Float64}}()
 
 function __init__()
@@ -31,11 +33,83 @@ function __init__()
     # BIN_EDGES[] = 10 .^ collect(2.7:0.2:4.5)
 
     df_data = DataFrames.disallowmissing!(CSV.read("$(fact_dir)/fact_wobble.csv", DataFrame))
-    y = encode( # labels of the simulated data
+    FACT_X[] = Matrix{Float32}(df_data[:, setdiff(propertynames(df_data), [:log10_energy])])
+    FACT_Y[] = Int32.(encode( # labels of the simulated data
         LinearDiscretizer(log10.(BIN_EDGES[])),
         df_data[!, :log10_energy]
+    ))
+    P_TRN[] = [ sum(FACT_Y[] .== i) / length(FACT_Y[]) for i in 1:length(BIN_CENTERS[]) ]
+end
+
+"""
+    fact_data([rng, ]N_trn=120000) -> (X_trn, y_trn, X_val, y_val, X_tst, y_tst)
+
+Return a training set `(X_trn, y_trn)` of size `N_trn`, a validation pool `(X_val, y_val)`,
+and a testing pool `(X_tst, y_tst)` of the FACT data.
+"""
+fact_data(N_trn::Int=120000) = fact_data(Random.GLOBAL_RNG, N_trn)
+function fact_data(rng::AbstractRNG, N_trn::Int=120000)
+    i = randperm(length(FACT_Y[]))
+    i_trn, i = i[1:N_trn], i[(N_trn+1):end] # split into training and remaining indices
+    N_val = floor(Int, length(i) / 2) # number of validation samples
+    i_val, i_tst = i[1:N_val], i[(N_val+1):end] # split into validation and testing indices
+    return (
+        FACT_X[][i_trn,:], FACT_Y[][i_trn], # training set (X_trn, y_trn)
+        FACT_X[][i_val,:], FACT_Y[][i_val], # validation pool (X_val, y_val)
+        FACT_X[][i_tst,:], FACT_Y[][i_tst], # testing pool (X_tst, y_tst)
     )
-    P_TRN[] = [ sum(y .== i) / length(y) for i in 1:length(BIN_CENTERS[]) ]
+end
+
+# a meaningful exception for subsample_indices
+struct ExhaustedClassException <: Exception
+    label::Int64 # the label that is exhausted
+    desired::Int64
+    available::Int64
+end
+Base.showerror(io::IO, e::ExhaustedClassException) = print(io,
+    "ExhaustedClassException: Cannot sample $(e.desired) instances of class $(e.label)",
+    " (only $(e.available) available)")
+
+"""
+    subsample_indices([rng,] N, p, y)
+
+Subsample `N` indices of labels `y` with prevalences `p`.
+"""
+subsample_indices(
+        N :: Int,
+        p :: AbstractVector{T1},
+        y :: AbstractVector{T2};
+        kwargs...
+        ) where {T1<:Real, T2<:Integer} =
+    subsample_indices(Random.GLOBAL_RNG, N, p, y; kwargs...)
+
+function subsample_indices(
+        rng :: AbstractRNG,
+        N :: Int,
+        p :: AbstractVector{T1},
+        y :: AbstractVector{T2};
+        n_classes :: Int = length(unique(y)),
+        allow_duplicates :: Bool = true,
+        Np_min :: Int = 1,
+        ) where {T1<:Real, T2<:Integer}
+    if length(p) != n_classes
+        throw(ArgumentError("length(p) != n_classes"))
+    end
+    Np = round_Np(rng, N, p; Np_min=Np_min)
+    i = randperm(rng, length(y)) # random order after shuffling
+    j = vcat(map(1:n_classes) do c
+        i_c = (1:length(y))[y[i].==c]
+        if Np[c] <= length(i_c)
+            i_c[1:Np[c]] # the return value of this map operation
+        elseif allow_duplicates
+            @debug "Have to repeat $(ceil(Int, Np[c] / length(i_c))) times"
+            i_c = repeat(i_c, ceil(Int, Np[c] / length(i_c)))
+            i_c[1:Np[c]] # take from a repetition
+        else
+            throw(ExhaustedClassException(c, Np[c], length(i_c)))
+        end
+    end...) # indices of the shuffled sub-sample
+    return i[j]
 end
 
 """
