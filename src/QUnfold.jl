@@ -130,11 +130,11 @@ _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float6
     if m.loss == :run
         solve_maximum_likelihood(M, q, N; τ=m.τ, strategy=m.strategy)
     elseif m.loss == :svd
-        solve_least_squares(M, q; w=_svd_weights(q), τ=m.τ, strategy=m.strategy) # weighted least squares
+        solve_least_squares(M, q; w=_svd_weights(q, N), τ=m.τ, strategy=m.strategy) # weighted least squares
     else
         error("There is no loss \"$(m.loss)\"")
     end
-_svd_weights(q::Vector{Float64}) = sqrt.(q) / mean(sqrt.(q))
+_svd_weights(q::Vector{Float64}, N::Int) = sqrt.(N .* q) / mean(sqrt.(N .* q))
 
 
 # HDx and HDy

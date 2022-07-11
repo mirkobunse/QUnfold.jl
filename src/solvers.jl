@@ -10,12 +10,12 @@ end
 Base.showerror(io::IO, x::NonOptimalStatusError) =
     print(io, "NonOptimalStatusError(", x.termination_status, ")")
 
-function _check_termination_status(model::Model, strategy::Symbol)
+function _check_termination_status(model::Model, loss::Symbol, strategy::Symbol)
     status = termination_status(model)
     if status == INTERRUPTED
         throw(InterruptException())
     elseif status ∉ [LOCALLY_SOLVED, OPTIMAL, ALMOST_LOCALLY_SOLVED, ALMOST_OPTIMAL]
-        @error "Non-optimal status after optimization" strategy status
+        @error "Non-optimal status after optimization" loss strategy status
         throw(NonOptimalStatusError(status))
     end
 end
@@ -57,7 +57,7 @@ function solve_least_squares(M::Matrix, q::Vector{Float64}; w::Vector{Float64}=o
 
     # solve and return
     optimize!(model)
-    _check_termination_status(model, strategy)
+    _check_termination_status(model, :least_squares, strategy)
     if strategy == :softmax
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
     elseif strategy == :constrained
@@ -104,7 +104,7 @@ function solve_maximum_likelihood(M::Matrix, q::Vector{Float64}, N::Int; τ::Flo
 
     # solve and return
     optimize!(model)
-    _check_termination_status(model, strategy)
+    _check_termination_status(model, :maximum_likelihood, strategy)
     if strategy == :softmax
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
     elseif strategy ∈ [:constrained, :unconstrained]
@@ -150,7 +150,7 @@ function solve_hellinger_distance(M::Matrix, q::Vector{Float64}, n_bins::Int; τ
 
     # solve and return
     optimize!(model)
-    _check_termination_status(model, strategy)
+    _check_termination_status(model, :hellinger_distance, strategy)
     if strategy == :softmax
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
     elseif strategy == :constrained
