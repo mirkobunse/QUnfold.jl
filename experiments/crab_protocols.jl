@@ -63,14 +63,6 @@ p_trn = [ sum(y .== i) / length(y) for i in 1:length(bin_centers) ]
 
 
 
-# map class prevalences to spectra
-function to_spectrum_density(p)
-    p = p ./ df_acceptance[2:end-1,:a_eff]
-    return p ./ sum(p)
-end
-
-
-
 # measure the curvature 1/2 * (Tp)^2
 C = length(bin_centers)
 T = LinearAlgebra.diagm( # Tikhonov matrix
@@ -114,6 +106,47 @@ function sample_app_oq(N, m=10000, keep=.2)
     return app[i]
 end
 
+
+
+spectrum_nmd(N::Int, a::AbstractVector{T}, b::AbstractVector{T}) where T<:Number =
+    nmd(to_log10_spectrum_density(N, a), to_log10_spectrum_density(N, b))
+
+# map class prevalences to spectra
+function to_log10_spectrum_density(N::Int, a::AbstractVector{T}) where T<:Number
+    p = a ./ df_acceptance[2:end-1,:a_eff]
+    p = log10.(1 .+ p ./ sum(p) .* (N-length(p)))
+    return p ./ sum(p)
+end
+
+"""
+    nmd(a, b) = mdpa(a, b) / (length(a) - 1)
+
+Compute the Normalized Match Distance (NMD) [sakai2021evaluating], a variant of the Earth
+Mover's Distance [rubner1998metric] which is normalized by the number of classes.
+"""
+nmd(a::AbstractVector{T}, b::AbstractVector{T}) where T<:Number =
+    mdpa(a, b) / (length(a) - 1)
+
+"""
+    mdpa(a, b)
+
+Minimum Distance of Pair Assignments (MDPA) [cha2002measuring] for ordinal pdfs `a` and `b`.
+The MDPA is a special case of the Earth Mover's Distance [rubner1998metric] that can be
+computed efficiently.
+"""
+function mdpa(a::AbstractVector{T}, b::AbstractVector{T}) where T<:Number
+    # __check_distance_arguments(a, b)
+    prefixsum = 0.0 # algorithm 1 in [cha2002measuring]
+    distance  = 0.0
+    for i in 1:length(a)
+        prefixsum += a[i] - b[i]
+        distance  += abs(prefixsum)
+    end
+    return distance / sum(a) # the normalization is a fix to the original MDPA
+end
+
+
+
 # format statistics of curvatures and divergences
 format_statistics(x) = [ @sprintf("%.4f", x) for x ∈ quantile(x, [.05, .25, .5, .75, .95]) ]
 
@@ -134,7 +167,7 @@ end
 
 function main(;
         curvature_path="results/crab_protocols_Tp.tex",
-        shift_path="results/crab_protocols_mae.tex"
+        shift_path="results/crab_protocols_nmd.tex"
     )
     df_curvature = DataFrame(
         Symbol("N") => Int[],
@@ -165,10 +198,7 @@ function main(;
             push!(df_shift, vcat(
                 N,
                 protocol,
-                format_statistics([ mean(abs.(
-                    log10.(to_spectrum_density(p)) -
-                    log10.(to_spectrum_density(p_trn))
-                )) for p in samples]) # mean absolute error
+                format_statistics([ spectrum_nmd(N, p, p_trn) for p in samples])
             ))
         end
     end
