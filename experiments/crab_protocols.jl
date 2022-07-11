@@ -4,7 +4,7 @@ function main(;
         curvature_path="results/crab_protocols_Tp.tex",
         shift_path="results/crab_protocols_nmd.tex"
     )
-    Random.seed!(42) # make this experiment reproducible
+    Random.seed!(876) # make this experiment reproducible
     df_curvature = DataFrame(
         Symbol("N") => Int[],
         Symbol("protocol") => String[],
