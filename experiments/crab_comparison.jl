@@ -16,7 +16,7 @@ import ScikitLearn, ScikitLearnBase
 
 RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").RandomForestClassifier
 
-function evaluate_methods(methods)
+function evaluate_methods(methods, X_pool, y_pool, n_samples)
     df = DataFrame(; # result storage
         N = Int[],
         protocol = String[],
@@ -25,15 +25,14 @@ function evaluate_methods(methods)
         nmd = Float64[],
         exception = String[],
     )
-    m_val = 100 # the number of validation samples; TODO increase to 1000
-    m_tst = 100 # the number of test samples; TODO increase to 1000
     for N in [1000, 10000] # the numbers of data items in each sample
         for (protocol, samples) in [
-                "APP-OQ (1\\%)" => QUnfoldExperiments.sample_app_oq(N, m_val, .01),
-                "NPP (Crab)" => QUnfoldExperiments.sample_npp_crab(N, m_val),
-                "Poisson" => QUnfoldExperiments.sample_poisson(N, m_val),
+                "APP-OQ (1\\%)" => QUnfoldExperiments.sample_app_oq(N, n_samples, .01),
+                "NPP (Crab)" => QUnfoldExperiments.sample_npp_crab(N, n_samples),
+                "Poisson" => QUnfoldExperiments.sample_poisson(N, n_samples),
                 ]
-            for (sample_index, p_true) in enumerate(samples)
+            # evaluate all samples and measure the total time needed
+            duration = @elapsed for (sample_index, p_true) in enumerate(samples)
 
                 # TODO: sample (X_p, y_p) from p
 
@@ -58,6 +57,7 @@ function evaluate_methods(methods)
                     push!(df, outcome)
                 end
             end
+            @info "Evaluated $(n_samples) samples in $(duration) seconds" N protocol length(methods)
         end
     end
     return df
@@ -72,18 +72,64 @@ function main(;
     # TODO read (X_trn, y_trn) and the pools (X_val, y_val), (X_tst, y_tst)
 
     clf = RandomForestClassifier(; oob_score=true, random_state=rand(UInt32), n_jobs=-1)
+    @info "Fitting the base classifier" clf
     fit!(clf, X_trn, y_trn)
+    t_clf = ClassTransformer(clf; fit_classifier=false)
 
     methods = []
-    for (method_name, method) ∈ [ # fit all methods
-            "ACC (constrained)" => ACC(clf; strategy=:constrained, fit_classifier=false),
-            "PACC (constrained)" => PACC(clf; strategy=:constrained, fit_classifier=false),
-            "o-ACC (softmax, $\\tau=10^{-2}$)" => ACC(clf; strategy=:softmax, τ=1e-2, fit_classifier=false),
-            "o-PACC (softmax, $\\tau=10^{-2}$)" => PACC(clf; strategy=:softmax, τ=1e-2, fit_classifier=false),
-        ]
-        push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
+    for τ_exponent ∈ [3, 1, -1, -3] # τ = 10 ^ τ_exponent
+        for (method_name, method) ∈ [ # fit methods that have τ as a hyper-parameter
+                "o-ACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)" => ACC(clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false),
+                "o-PACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)" => PACC(clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false),
+                "RUN (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)" => RUN(t_clf; strategy=:constrained, τ=10.0^τ_exponent, fit_classifier=false), # TODO: replace with original RUN
+                "SVD (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)" => SVD(t_clf; strategy=:constrained, τ=10.0^τ_exponent, fit_classifier=false), # TODO: replace with original SVD
+                "RUN (softmax, \$\\tau=10^{$(τ_exponent)}\$)" => RUN(t_clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false),
+                "SVD (softmax, \$\\tau=10^{$(τ_exponent)}\$)" => SVD(t_clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false),
+                ]
+            push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
+        end
+        for n_bins ∈ [2, 4]
+            for (method_name, method) ∈ [ # fit methods that have τ and n_bins as hyper-parameters
+                    "o-HDx (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)" => HDx(n_bins; strategy=:softmax, τ=10.0^τ_exponent),
+                    "o-HDy (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)" => HDy(clf, n_bins; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false),
+                    ]
+                push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
+            end
+        end
     end
+    for n_bins ∈ [2, 4]
+        for (method_name, method) ∈ [ # fit methods that have n_bins as a hyper-parameter
+                "HDx (constrained, \$B=$(n_bins)\$)" => HDx(n_bins; strategy=:constrained),
+                "HDy (constrained, \$B=$(n_bins)\$)" => HDy(clf, n_bins; strategy=:constrained, fit_classifier=false),
+                ]
+            push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
+        end
+    end
+    # TODO add o-SLD and IBU
+    
+    @info "Fitting $(length(methods)) methods"
+    methods = [ method_name => QUnfold.fit(method, X_trn, y_trn) for (method_name, method) ∈ methods ]
 
-    # TODO: aggregation + hyper-parameter selection & adding of non-parametrized methods + testing
-    return evaluate_methods(methods)
+    @info "Validating for hyper-parameter optimization"
+    df = evaluate_methods(methods, X_val, y_val, 100) # validate on 100 samples; TODO increase to 1000
+
+    # # TODO: aggregation + hyper-parameter selection
+    # @info "Selecting the best hyper-parameters"
+    # methods = filter(x -> is_best(x), methods)
+    # 
+    # # fit additional methods that have no hyper-parameters
+    # for (method_name, method) ∈ [
+    #         "ACC (constrained)" => ACC(clf; strategy=:constrained, fit_classifier=false),
+    #         "PACC (constrained)" => PACC(clf; strategy=:constrained, fit_classifier=false),
+    #         # TODO add SLD
+    #         ]
+    #     push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
+    # end
+    # 
+    # @info "Final testing"
+    # df = evaluate_methods(methods, X_tst, y_tst, 100) # validate on 100 samples; TODO increase to 1000
+    # 
+    # # TODO: aggregate and return
+
+    return df
 end
