@@ -1,9 +1,9 @@
-using DataFrames, Random, QUnfoldExperiments
+using ArgParse, DataFrames, Random, QUnfoldExperiments
 
 function main(;
-        curvature_path="results/crab_protocols_Tp.tex",
-        shift_path="results/crab_protocols_nmd.tex"
-    )
+        curvature_path :: String = "results/crab_protocols_Tp.tex",
+        shift_path :: String = "results/crab_protocols_nmd.tex"
+        )
     Random.seed!(876) # make this experiment reproducible
     df_curvature = DataFrame(
         Symbol("N") => Int[],
@@ -49,4 +49,22 @@ function main(;
     QUnfoldExperiments.export_table(curvature_path, df_curvature)
     QUnfoldExperiments.export_table(shift_path, df_shift)
     @info "LaTeX tables exported to $(curvature_path) and $(shift_path)"
+end
+
+# command line interface
+function parse_commandline()
+    s = ArgParseSettings()
+    @add_arg_table s begin
+        "curvature_path"
+            help = "the output path for the curvature table"
+            required = true
+        "shift_path"
+            help = "the output path for the prior probability shift table"
+            required = true
+    end
+    return parse_args(s; as_symbols=true)
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    main(; parse_commandline()...)
 end
