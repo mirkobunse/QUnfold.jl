@@ -35,13 +35,13 @@ Docstrings contain further information.
 
 ## Experiments
 
-The `experiments/` directory contains a `Makefile` with which you can run the experiments for our LQ2022 submission *On Multi-Class Extensions of Adjusted Classify and Count*.
+The `experiments/` directory contains a Makefile with which you can run the experiments for our LQ2022 submission *On Multi-Class Extensions of Adjusted Classify and Count*.
 
 ```
 cd experiments/
-make -n # inspect all steps of our experimentation without running them (dry-run)
+make -f lequa.mk -n # inspect all steps of our experimentation without running them (dry-run)
 
-make # run all experimentation (CAUTION: computation-heavy)
+make -f lequa.mk # run all experimentation (CAUTION: computation-heavy)
 ```
 
 We provide a [Docker](https://docs.docker.com/) setup for those who prefer to run the experiments in an isolated environment, and possibly in a computing cluster.
