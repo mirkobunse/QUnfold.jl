@@ -14,7 +14,7 @@ function _check_termination_status(model::Model, loss::Symbol, strategy::Symbol)
     status = termination_status(model)
     if status == INTERRUPTED
         throw(InterruptException())
-    elseif status ∉ [LOCALLY_SOLVED, OPTIMAL, ALMOST_LOCALLY_SOLVED, ALMOST_OPTIMAL]
+    elseif status ∉ [LOCALLY_SOLVED, OPTIMAL, ALMOST_LOCALLY_SOLVED, ALMOST_OPTIMAL, NUMERICAL_ERROR]
         @error "Non-optimal status after optimization" loss strategy status
         throw(NonOptimalStatusError(status))
     end
