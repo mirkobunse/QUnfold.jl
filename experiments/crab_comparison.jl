@@ -73,7 +73,9 @@ function main(;
     # read the training set, the validation pool, and the testing pool
     X_trn, y_trn, X_val, y_val, X_tst, y_tst = QUnfoldExperiments.fact_data()
 
-    clf = RandomForestClassifier(24; oob_score=true, random_state=rand(UInt32), n_jobs=-1)
+    clf = QUnfoldExperiments.CachedClassifier(
+        RandomForestClassifier(24; oob_score=true, random_state=rand(UInt32), n_jobs=-1)
+    )
     @info "Fitting the base classifier to $(length(y_trn)) training items" clf
     ScikitLearn.fit!(clf, X_trn, y_trn)
     t_clf = ClassTransformer(clf; fit_classifier=false)

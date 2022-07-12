@@ -10,6 +10,7 @@ using
     Statistics,
     StatsBase,
     Printf
+import ScikitLearnBase
 
 const A_EFF = Ref{Vector{Float64}}()
 const BIN_CENTERS = Ref{Vector{Float64}}()
@@ -40,6 +41,40 @@ function __init__()
     ))
     P_TRN[] = [ sum(FACT_Y[] .== i) / length(FACT_Y[]) for i in 1:length(BIN_CENTERS[]) ]
 end
+
+mutable struct CachedClassifier
+    classifier::Any
+    last_X::Any
+    last_predict::Vector{Int}
+    last_predict_proba::Matrix{Float64}
+    CachedClassifier(c::Any) = new(c, nothing, Int[], Matrix{Float64}(undef, 0, 0))
+end
+
+Base.hasproperty(c::CachedClassifier, x::Symbol) =
+    x ∈ fieldnames(CachedClassifier) || x ∈ propertynames(c.classifier)
+Base.getproperty(c::CachedClassifier, x::Symbol) =
+    x ∈ fieldnames(CachedClassifier) ? getfield(c, x) : getproperty(c.classifier, x)
+ScikitLearnBase.fit!(c::CachedClassifier, X::Any, y::AbstractVector{T}) where {T<:Integer} =
+    ScikitLearnBase.fit!(c.classifier, X, y)
+function ScikitLearnBase.predict(c::CachedClassifier, X::Any)
+    _cache!(c, X)
+    return c.last_predict
+end
+function ScikitLearnBase.predict_proba(c::CachedClassifier, X::Any)
+    _cache!(c, X)
+    return c.last_predict_proba
+end
+_cache!(c::CachedClassifier, X::Any) =
+    if c.last_X != X
+        c.last_predict_proba = ScikitLearnBase.predict_proba(c.classifier, X)
+        c.last_predict = [ last(idx.I) for idx ∈ argmax(c.last_predict_proba, dims=2)[:] ]
+        c.last_X = X
+    end
+ScikitLearnBase.clone(c::CachedClassifier) =
+    CachedClassifier(ScikitLearnBase.clone(c.classifier))
+ScikitLearnBase.get_classes(c::CachedClassifier) =
+    ScikitLearnBase.get_classes(c.classifier)
+
 
 """
     fact_data([rng, ]N_trn=120000) -> (X_trn, y_trn, X_val, y_val, X_tst, y_tst)
