@@ -47,15 +47,20 @@ mutable struct CachedClassifier
     last_X::Any
     last_predict::Vector{Int}
     last_predict_proba::Matrix{Float64}
-    CachedClassifier(c::Any) = new(c, nothing, Int[], Matrix{Float64}(undef, 0, 0))
+    l::ReentrantLock
+    CachedClassifier(c::Any) = new(c, nothing, Int[], Matrix{Float64}(undef, 0, 0), ReentrantLock())
 end
 
-Base.hasproperty(c::CachedClassifier, x::Symbol) =
+Base.lock(f::Function, c::CachedClassifier) = lock(f, getfield(c, :l))
+Base.hasproperty(c::CachedClassifier, x::Symbol) = lock(c) do
     x ∈ fieldnames(CachedClassifier) || x ∈ propertynames(c.classifier)
-Base.getproperty(c::CachedClassifier, x::Symbol) =
+end
+Base.getproperty(c::CachedClassifier, x::Symbol) = lock(c) do
     x ∈ fieldnames(CachedClassifier) ? getfield(c, x) : getproperty(c.classifier, x)
-ScikitLearnBase.fit!(c::CachedClassifier, X::Any, y::AbstractVector{T}) where {T<:Integer} =
+end
+ScikitLearnBase.fit!(c::CachedClassifier, X::Any, y::AbstractVector{T}) where {T<:Integer} = lock(c) do
     ScikitLearnBase.fit!(c.classifier, X, y)
+end
 function ScikitLearnBase.predict(c::CachedClassifier, X::Any)
     _cache!(c, X)
     return c.last_predict
@@ -66,14 +71,18 @@ function ScikitLearnBase.predict_proba(c::CachedClassifier, X::Any)
 end
 _cache!(c::CachedClassifier, X::Any) =
     if c.last_X != X
-        c.last_predict_proba = ScikitLearnBase.predict_proba(c.classifier, X)
-        c.last_predict = [ last(idx.I) for idx ∈ argmax(c.last_predict_proba, dims=2)[:] ]
-        c.last_X = X
+        lock(c) do
+            c.last_predict_proba = ScikitLearnBase.predict_proba(c.classifier, X)
+            c.last_predict = [ last(idx.I) for idx ∈ argmax(c.last_predict_proba, dims=2)[:] ]
+            c.last_X = X
+        end
     end
-ScikitLearnBase.clone(c::CachedClassifier) =
+ScikitLearnBase.clone(c::CachedClassifier) = lock(c) do
     CachedClassifier(ScikitLearnBase.clone(c.classifier))
-ScikitLearnBase.get_classes(c::CachedClassifier) =
+end
+ScikitLearnBase.get_classes(c::CachedClassifier) = lock(c) do
     ScikitLearnBase.get_classes(c.classifier)
+end
 
 
 """

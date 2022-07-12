@@ -16,7 +16,7 @@ import ScikitLearn, ScikitLearnBase
 
 RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").RandomForestClassifier
 
-function evaluate_methods(methods, X_pool, y_pool, n_samples)
+function evaluate_methods(methods, X_pool, y_pool, n_samples, clf)
     df = DataFrame(; # result storage
         N = Int[],
         protocol = String[],
@@ -36,11 +36,15 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples)
 
                 # draw a sample (X_p, y_p) from the pool, according to p_true
                 i_p = QUnfoldExperiments.subsample_indices(N, p_true, y_pool)
+                X_p = X_pool[i_p,:]
+                QUnfoldExperiments._cache!(clf, X_p) # cache predictions
 
-                for (method_name, method) ∈ methods
+                outcomes = Array{Vector{Any}}(undef, length(methods))
+                Threads.@threads for i_method in 1:length(methods)
+                    method_name, method = methods[i_method]
                     outcome = [ N, protocol, sample_index, method_name ]
                     try
-                        p_hat = QUnfold.predict(method, X_pool[i_p,:])
+                        p_hat = QUnfold.predict(method, X_p)
                         nmd = QUnfoldExperiments.nmd(
                             QUnfoldExperiments.to_log10_spectrum_density(N, p_hat),
                             QUnfoldExperiments.to_log10_spectrum_density(N, p_true)
@@ -55,8 +59,9 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples)
                             rethrow()
                         end
                     end
-                    push!(df, outcome)
+                    outcomes[i_method] = outcome
                 end
+                push!(df, outcomes...)
             end
             @info "Evaluated $(n_samples) samples in $(duration) seconds" N protocol length(methods)
         end
@@ -109,7 +114,7 @@ function main(;
     methods = [ method_name => QUnfold.fit(method, X_trn, y_trn) for (method_name, method) ∈ methods ]
 
     @info "Validating for hyper-parameter optimization"
-    df = evaluate_methods(methods, X_val, y_val, 100) # validate on 100 samples; TODO increase to 1000
+    df = evaluate_methods(methods, X_val, y_val, 20, clf) # validate on 20 samples; TODO increase to 1000
 
     # # TODO: aggregation + hyper-parameter selection
     # @info "Selecting the best hyper-parameters"
@@ -125,7 +130,7 @@ function main(;
     # end
     # 
     # @info "Final testing"
-    # df = evaluate_methods(methods, X_tst, y_tst, 100) # validate on 100 samples; TODO increase to 1000
+    # df = evaluate_methods(methods, X_tst, y_tst, 20, clf) # validate on 20 samples; TODO increase to 1000
     # 
     # # TODO: aggregate and return
 
