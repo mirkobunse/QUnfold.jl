@@ -134,7 +134,10 @@ _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float6
     else
         error("There is no loss \"$(m.loss)\"")
     end
-_svd_weights(q::Vector{Float64}, N::Int) = sqrt.(N .* q) / mean(sqrt.(N .* q))
+function _svd_weights(q::Vector{Float64}, N::Int)
+    w = sqrt.(1 .+ (N-length(q)) .* q)
+    return w ./ mean(w) # the mean weight will be 1 after this normalization
+end
 
 
 # HDx and HDy

@@ -20,10 +20,24 @@ function _check_termination_status(model::Model, loss::Symbol, strategy::Symbol)
     end
 end
 
+function _check_solver_args(M::Matrix{Float64}, q::Vector{Float64})
+    if size(M, 1) != length(q)
+        throw(ArgumentError("Shapes of M $(size(M)) and q ($(length(q))) do not match"))
+    elseif !all(isfinite.(M))
+        throw(ArgumentError("Not all values in M are finite"))
+    elseif !all(isfinite.(q))
+        throw(ArgumentError("Not all values in q are finite"))
+    end
+end
+
 
 # solvers
 
-function solve_least_squares(M::Matrix, q::Vector{Float64}; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
+    _check_solver_args(M, q)
+    if !all(isfinite.(w))
+        throw(ArgumentError("Not all values in w are finite"))
+    end
     model = Model(Ipopt.Optimizer)
     set_silent(model)
     F, C = size(M) # the numbers of features and classes
@@ -48,7 +62,7 @@ function solve_least_squares(M::Matrix, q::Vector{Float64}; w::Vector{Float64}=o
         @constraint(model, ones(C)' * p == 1) # 1' * p = 1
         @expression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p[j] for j in 1:C))
         @objective(model, Min,
-            ((q - M * p) ./ w)' * ((q - M * p) ./ w) # loss function
+            sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
             + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
         )
     else
@@ -66,7 +80,8 @@ function solve_least_squares(M::Matrix, q::Vector{Float64}; w::Vector{Float64}=o
 end
 
 
-function solve_maximum_likelihood(M::Matrix, q::Vector{Float64}, N::Int; τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int; τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
+    _check_solver_args(M, q)
     model = Model(Ipopt.Optimizer)
     set_silent(model)
     F, C = size(M) # the numbers of features and classes
@@ -113,7 +128,8 @@ function solve_maximum_likelihood(M::Matrix, q::Vector{Float64}, N::Int; τ::Flo
 end
 
 
-function solve_hellinger_distance(M::Matrix, q::Vector{Float64}, n_bins::Int; τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, n_bins::Int; τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
+    _check_solver_args(M, q)
     model = Model(Ipopt.Optimizer)
     set_silent(model)
     F, C = size(M) # the numbers of "multi-features" and classes
