@@ -33,7 +33,7 @@ end
 
 # solvers
 
-function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
     _check_solver_args(M, q)
     if !all(isfinite.(w))
         throw(ArgumentError("Not all values in w are finite"))
@@ -80,7 +80,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}; w::Vector{F
 end
 
 
-function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int; τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
     _check_solver_args(M, q)
     model = Model(Ipopt.Optimizer)
     set_silent(model)
@@ -128,7 +128,7 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
 end
 
 
-function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, n_bins::Int; τ::Float64=0.0, strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
     _check_solver_args(M, q)
     model = Model(Ipopt.Optimizer)
     set_silent(model)

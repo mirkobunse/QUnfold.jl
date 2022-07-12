@@ -77,16 +77,17 @@ struct _ACC <: AbstractMethod
     strategy::Symbol # ∈ {:constrained, :softmax, :pinv, :inv, :ovr, :none}
     is_probabilistic::Bool
     τ::Float64 # regularization strength for o-ACC and o-PACC
+    a::Vector{Float64} # acceptance factors for regularization
     fit_classifier::Bool
 end
-ACC(c::Any; strategy::Symbol=:constrained, τ::Float64=0.0, fit_classifier::Bool=true) =
-    _ACC(c, strategy, false, τ, fit_classifier)
-PACC(c::Any; strategy::Symbol=:constrained, τ::Float64=0.0, fit_classifier::Bool=true) =
-    _ACC(c, strategy, true, τ, fit_classifier)
+ACC(c::Any; strategy::Symbol=:constrained, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
+    _ACC(c, strategy, false, τ, a, fit_classifier)
+PACC(c::Any; strategy::Symbol=:constrained, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
+    _ACC(c, strategy, true, τ, a, fit_classifier)
 CC(c::Any; fit_classifier::Bool=true) =
-    _ACC(c, :none, false, 0.0, fit_classifier)
+    _ACC(c, :none, false, 0.0, Float64[], fit_classifier)
 PCC(c::Any; fit_classifier::Bool=true) =
-    _ACC(c, :none, true, 0.0, fit_classifier)
+    _ACC(c, :none, true, 0.0, Float64[], fit_classifier)
 
 _transformer(m::_ACC) = ClassTransformer(
         m.classifier;
@@ -119,12 +120,13 @@ struct _RUN_SVD <: AbstractMethod
     transformer::AbstractTransformer
     loss::Symbol # ∈ {:run, :svd}
     τ::Float64 # regularization strength
+    a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :unconstrained}
 end
-RUN(transformer::AbstractTransformer; τ::Float64=1e-6, strategy=:constrained) =
-    _RUN_SVD(transformer, :run, τ, strategy)
-SVD(transformer::AbstractTransformer; τ::Float64=1e-6, strategy=:constrained) =
-    _RUN_SVD(transformer, :svd, τ, strategy)
+RUN(transformer::AbstractTransformer; τ::Float64=1e-6, a::Vector{Float64}=Float64[], strategy=:constrained) =
+    _RUN_SVD(transformer, :run, τ, a, strategy)
+SVD(transformer::AbstractTransformer; τ::Float64=1e-6, a::Vector{Float64}=Float64[], strategy=:constrained) =
+    _RUN_SVD(transformer, :svd, τ, a, strategy)
 _transformer(m::_RUN_SVD) = m.transformer
 _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     if m.loss == :run
@@ -145,17 +147,19 @@ end
 struct HDx <: AbstractMethod
     n_bins::Int
     τ::Float64 # regularization strength
+    a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax}
-    HDx(n_bins::Int; τ::Float64=0.0, strategy=:constrained) = new(n_bins, τ, strategy)
+    HDx(n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:constrained) = new(n_bins, τ, a, strategy)
 end
 struct HDy <: AbstractMethod
     classifier::Any
     n_bins::Int
     τ::Float64 # regularization strength
+    a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax}
     fit_classifier::Bool
-    HDy(classifier::Any, n_bins::Int; τ::Float64=0.0, strategy=:constrained, fit_classifier::Bool=true) =
-        new(classifier, n_bins, τ, strategy, fit_classifier)
+    HDy(classifier::Any, n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:constrained, fit_classifier::Bool=true) =
+        new(classifier, n_bins, τ, a, strategy, fit_classifier)
 end
 _transformer(m::HDx) = HistogramTransformer(m.n_bins)
 _transformer(m::HDy) = HistogramTransformer(
