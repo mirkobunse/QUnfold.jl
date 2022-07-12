@@ -16,12 +16,13 @@ import ScikitLearn, ScikitLearnBase
 
 RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").RandomForestClassifier
 
-function evaluate_methods(methods, X_pool, y_pool, n_samples, clf)
+function evaluate_methods(methods, X_pool, y_pool, n_samples, clf, best=Dict{Tuple{Int64,String},Vector{String}}())
     df = DataFrame(; # result storage
         N = Int[],
         protocol = String[],
         sample_index = Int[],
-        method = String[],
+        method_id = String[],
+        method_name = String[],
         nmd = Float64[],
         exception = String[],
     )
@@ -31,6 +32,8 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples, clf)
                 "NPP (Crab)" => QUnfoldExperiments.sample_npp_crab(N, n_samples),
                 "Poisson" => QUnfoldExperiments.sample_poisson(N, n_samples),
                 ]
+            current_methods = length(best) > 0 ? filter(x -> x[2] ∈ best[(N, protocol)], methods) : methods
+
             # evaluate all samples and measure the total time needed
             duration = @elapsed for (sample_index, p_true) in enumerate(samples)
 
@@ -39,10 +42,10 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples, clf)
                 X_p = X_pool[i_p,:]
                 QUnfoldExperiments._cache!(clf, X_p) # cache predictions
 
-                outcomes = Array{Vector{Any}}(undef, length(methods))
-                Threads.@threads for i_method in 1:length(methods)
-                    method_name, method = methods[i_method]
-                    outcome = [ N, protocol, sample_index, method_name ]
+                outcomes = Array{Vector{Any}}(undef, length(current_methods))
+                Threads.@threads for i_method in 1:length(current_methods)
+                    id, name, method = current_methods[i_method] # un-pack the method tuple
+                    outcome = [ N, protocol, sample_index, id, name ]
                     try
                         p_hat = QUnfold.predict(method, X_p)
                         nmd = QUnfoldExperiments.nmd(
@@ -63,14 +66,17 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples, clf)
                 end
                 push!(df, outcomes...)
             end
-            @info "Evaluated $(n_samples) samples in $(duration) seconds" N protocol length(methods)
+            @info "Evaluated $(n_samples) samples in $(duration) seconds" N protocol length(current_methods)
         end
     end
     return df
 end
 
 function main(;
-        output_path :: String = "results/crab_comparison.csv",
+        app_oq_path :: String = "results/crab_comparison_app_oq.tex",
+        npp_crab_path :: String = "results/crab_comparison_npp_crab.tex",
+        poisson_path :: String = "results/crab_comparison_poisson.tex",
+        test_path :: String = "results/crab_comparison_test.csv",
         validation_path :: String = "results/crab_comparison_validation.csv",
         )
     Random.seed!(876) # make this experiment reproducible
@@ -88,51 +94,95 @@ function main(;
     methods = []
     for τ_exponent ∈ [3, 1, -1, -3] # τ = 10 ^ τ_exponent
         push!(methods, # add methods that have τ as a hyper-parameter
-            "o-ACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)" => ACC(clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false),
-            "o-PACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)" => PACC(clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false),
-            "RUN (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)" => QUnfold.RUN(t_clf; strategy=:constrained, τ=10.0^τ_exponent), # TODO: replace with original RUN
-            "SVD (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)" => QUnfold.SVD(t_clf; strategy=:constrained, τ=10.0^τ_exponent), # TODO: replace with original SVD
-            "RUN (softmax, \$\\tau=10^{$(τ_exponent)}\$)" => QUnfold.RUN(t_clf; strategy=:softmax, τ=10.0^τ_exponent),
-            "SVD (softmax, \$\\tau=10^{$(τ_exponent)}\$)" => QUnfold.SVD(t_clf; strategy=:softmax, τ=10.0^τ_exponent),
+            ("o-acc", "o-ACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", ACC(clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false)),
+            ("o-pacc", "o-PACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", PACC(clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false)),
+            ("run-original", "RUN (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_clf; strategy=:constrained, τ=10.0^τ_exponent)), # TODO: replace with original RUN
+            ("svd-original", "SVD (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_clf; strategy=:constrained, τ=10.0^τ_exponent)), # TODO: replace with original SVD
+            ("run-softmax", "RUN (softmax, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_clf; strategy=:softmax, τ=10.0^τ_exponent)),
+            ("svd-softmax", "SVD (softmax, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_clf; strategy=:softmax, τ=10.0^τ_exponent)),
         )
         for n_bins ∈ [2, 4]
             push!(methods, # add methods that have τ and n_bins as hyper-parameters
-                "o-HDx (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)" => HDx(n_bins; strategy=:softmax, τ=10.0^τ_exponent),
-                "o-HDy (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)" => HDy(clf, n_bins; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false),
+                ("o-hdx", "o-HDx (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDx(n_bins; strategy=:softmax, τ=10.0^τ_exponent)),
+                ("o-hdy", "o-HDy (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDy(clf, n_bins; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false)),
             )
         end
     end
     for n_bins ∈ [2, 4]
         push!(methods, # add methods that have n_bins as a hyper-parameter
-            "HDx (constrained, \$B=$(n_bins)\$)" => HDx(n_bins; strategy=:constrained),
-            "HDy (constrained, \$B=$(n_bins)\$)" => HDy(clf, n_bins; strategy=:constrained, fit_classifier=false),
+            ("hdx", "HDx (constrained, \$B=$(n_bins)\$)", HDx(n_bins; strategy=:constrained)),
+            ("hdy", "HDy (constrained, \$B=$(n_bins)\$)", HDy(clf, n_bins; strategy=:constrained, fit_classifier=false)),
         )
     end
     # TODO add o-SLD and IBU
     
     @info "Fitting $(length(methods)) methods"
-    methods = [ method_name => QUnfold.fit(method, X_trn, y_trn) for (method_name, method) ∈ methods ]
+    methods = [ (id, name, QUnfold.fit(method, X_trn, y_trn)) for (id, name, method) ∈ methods ]
 
     @info "Validating for hyper-parameter optimization"
     df = evaluate_methods(methods, X_val, y_val, 20, clf) # validate on 20 samples; TODO increase to 1000
 
-    # # TODO: aggregation + hyper-parameter selection
-    # @info "Selecting the best hyper-parameters"
-    # methods = filter(x -> is_best(x), methods)
-    # 
-    # # fit additional methods that have no hyper-parameters
-    # for (method_name, method) ∈ [
-    #         "ACC (constrained)" => ACC(clf; strategy=:constrained, fit_classifier=false),
-    #         "PACC (constrained)" => PACC(clf; strategy=:constrained, fit_classifier=false),
-    #         # TODO add SLD
-    #         ]
-    #     push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
-    # end
-    # 
-    # @info "Final testing"
-    # df = evaluate_methods(methods, X_tst, y_tst, 20, clf) # validate on 20 samples; TODO increase to 1000
-    # 
-    # # TODO: aggregate and return
+    # store validation results
+    mkpath(dirname(validation_path))
+    CSV.write(validation_path, df)
+    @info "$(nrow(df)) results written to $(validation_path)"
 
+    @info "Selecting the best hyper-parameters"
+    df_best = combine(
+        groupby( # group average NMDs by method_id
+            combine(
+                groupby(df[df[!,:exception].=="",:], [:N, :protocol, :method_id, :method_name]),
+                :nmd => DataFrames.mean => :nmd
+            ), # average NMDs
+            [:N, :protocol, :method_id]
+        ),
+        sdf -> begin
+            sdf2 = sdf[.!(ismissing.(sdf[!,:nmd])),:]
+            nrow(sdf2) > 0 ? sdf2[argmin(sdf2[!,:nmd]),:] : sdf[1,:]
+        end
+    )
+
+    # fit additional methods that have no hyper-parameters
+    new_methods = []
+    for (id, name, method) ∈ [
+            ("acc", "ACC (constrained)", ACC(clf; strategy=:constrained, fit_classifier=false)),
+            ("pacc", "PACC (constrained)", PACC(clf; strategy=:constrained, fit_classifier=false)),
+            # TODO add SLD
+            ]
+        push!(new_methods, (id, name, QUnfold.fit(method, X_trn, y_trn)))
+    end
+    methods = vcat(methods, new_methods)
+    best = Dict(
+        (N, protocol) => vcat(sdf[:,:method_name], [x[2] for x ∈ new_methods])
+        for ((N, protocol), sdf) ∈ pairs(groupby(df_best, [:N, :protocol]))
+    )
+
+    @info "Final testing"
+    df = evaluate_methods(methods, X_tst, y_tst, 20, clf, best) # test on 20 samples; TODO increase to 1000
+
+    # aggregate and store testing results
+    mkpath(dirname(test_path))
+    CSV.write(test_path, df)
+    @info "$(nrow(df)) results written to $(test_path)"
+
+    df = combine( # average NMDs
+        groupby(df[df[!,:exception].=="",:], [:N, :protocol, :method_id, :method_name]),
+        :nmd => DataFrames.mean => :nmd
+    )
+    for (protocol, protocol_path) ∈ [
+            ("APP-OQ (1\\%)", app_oq_path),
+            ("NPP (Crab)", npp_crab_path),
+            ("Poisson", poisson_path)
+            ]
+        QUnfoldExperiments.export_table(
+            protocol_path,
+            rename(
+                sort(df[df[!,:protocol] .== protocol, [:N, :method_name, :nmd]], [:N, :nmd]),
+                :method_name => :method,
+                :nmd => :NMD
+            )
+        )
+        @info "Results of $(protocol) written to $(protocol_path)"
+    end
     return df
 end
