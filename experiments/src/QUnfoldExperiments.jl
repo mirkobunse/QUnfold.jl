@@ -216,6 +216,8 @@ function sample_app_oq(N, m=10000, keep=.2)
     return app[i]
 end
 
+acceptance_factors() = 1 ./ A_EFF[]
+
 """
     to_log10_spectrum_density(N, p)
 
