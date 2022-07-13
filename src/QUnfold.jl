@@ -97,7 +97,7 @@ _transformer(m::_ACC) = ClassTransformer(
 
 _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     if m.strategy ∈ [:constrained, :softmax]
-        solve_least_squares(M, q; τ=m.τ, strategy=m.strategy)
+        solve_least_squares(M, q, N; τ=m.τ, a=m.a, strategy=m.strategy)
     elseif m.strategy == :pinv
         clip_and_normalize(pinv(M) * q)
     elseif m.strategy == :inv
@@ -130,9 +130,9 @@ SVD(transformer::AbstractTransformer; τ::Float64=1e-6, a::Vector{Float64}=Float
 _transformer(m::_RUN_SVD) = m.transformer
 _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     if m.loss == :run
-        solve_maximum_likelihood(M, q, N; τ=m.τ, strategy=m.strategy)
+        solve_maximum_likelihood(M, q, N; τ=m.τ, a=m.a, strategy=m.strategy)
     elseif m.loss == :svd
-        solve_least_squares(M, q; w=_svd_weights(q, N), τ=m.τ, strategy=m.strategy) # weighted least squares
+        solve_least_squares(M, q, N; w=_svd_weights(q, N), τ=m.τ, a=m.a, strategy=m.strategy) # weighted least squares
     else
         error("There is no loss \"$(m.loss)\"")
     end
@@ -171,6 +171,6 @@ _transformer(m::HDy) = HistogramTransformer(
         )
     )
 _solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
-    solve_hellinger_distance(M, q, m.n_bins; τ=m.τ, strategy=m.strategy)
+    solve_hellinger_distance(M, q, N, m.n_bins; τ=m.τ, a=m.a, strategy=m.strategy)
 
 end # module

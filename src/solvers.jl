@@ -33,7 +33,7 @@ end
 
 # solvers
 
-function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
     _check_solver_args(M, q)
     if !all(isfinite.(w))
         throw(ArgumentError("Not all values in w are finite"))
@@ -51,17 +51,31 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}; w::Vector{F
     if strategy == :softmax
         @variable(model, l[1:C]) # latent variables (unconstrained)
         @NLexpression(model, p[i = 1:C], exp(l[i]) / sum(exp(l[j]) for j in 1:C)) # p = softmax(l)
-        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p[j] for j in 1:C))
+        if length(a) > 0
+            @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
+        else
+            @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
+        end
+        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
         @NLobjective(model, Min,
             sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
             + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
             + λ * sum(l[j]^2 for j in 1:C) # soft-max regularization
         )
-    elseif strategy == :constrained
+    elseif strategy == :constrained && length(a) == 0 # quadratic objective without NL prefix
         @variable(model, p[1:C] ≥ 0) # p_i ≥ 0
         @constraint(model, ones(C)' * p == 1) # 1' * p = 1
         @expression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p[j] for j in 1:C))
         @objective(model, Min,
+            sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
+            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+        )
+    elseif strategy == :constrained # NL prefix needed
+        @variable(model, p[1:C] ≥ 0) # p_i ≥ 0
+        @NLconstraint(model, sum(p[i] for i in 1:C) == 1) # 1' * p = 1
+        @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
+        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+        @NLobjective(model, Min,
             sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
             + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
         )
@@ -110,7 +124,12 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
 
     # minimum regularized log-likelihood  ∑_{i=1}^F [Mp]_i - q_i ln [Mp]_i  +  τ/2 * (Tp)^2
     @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * N * p[j] for j in 1:C))
-    @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * N * p[j] for j in 1:C))
+    if length(a) > 0
+        @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
+    else
+        @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
+    end
+    @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
     @NLobjective(model, Min,
         sum(Mp[i] - q[i] * log(Mp[i]) for i in 1:F) # loss function
         + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
@@ -128,7 +147,7 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
 end
 
 
-function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int, n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
     _check_solver_args(M, q)
     model = Model(Ipopt.Optimizer)
     set_silent(model)
@@ -157,7 +176,12 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, n_bins
     @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * p[j] for j in 1:C))
     @NLexpression(model, squared[i = 1:F], (sqrt(q[i]) - sqrt(Mp[i]))^2)
     @NLexpression(model, HD[i = 1:n_features], sqrt(sum((squared[j] for j in (1+(i-1)*n_bins):(i*n_bins)))))
-    @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p[j] for j in 1:C))
+    if length(a) > 0
+        @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
+    else
+        @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
+    end
+    @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
     @NLobjective(model, Min,
         sum(HD[i] for i in 1:n_features) / n_features # loss function
         + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization

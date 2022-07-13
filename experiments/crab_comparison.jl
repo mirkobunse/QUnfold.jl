@@ -94,17 +94,17 @@ function main(;
     methods = []
     for τ_exponent ∈ [3, 1, -1, -3] # τ = 10 ^ τ_exponent
         push!(methods, # add methods that have τ as a hyper-parameter
-            ("o-acc", "o-ACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", ACC(clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false)),
-            ("o-pacc", "o-PACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", PACC(clf; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false)),
-            ("run-original", "RUN (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_clf; strategy=:constrained, τ=10.0^τ_exponent)), # TODO: replace with original RUN
-            ("svd-original", "SVD (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_clf; strategy=:constrained, τ=10.0^τ_exponent)), # TODO: replace with original SVD
-            ("run-softmax", "RUN (softmax, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_clf; strategy=:softmax, τ=10.0^τ_exponent)),
-            ("svd-softmax", "SVD (softmax, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_clf; strategy=:softmax, τ=10.0^τ_exponent)),
+            ("o-acc", "o-ACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", ACC(clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.A_EFF[], fit_classifier=false)),
+            ("o-pacc", "o-PACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", PACC(clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.A_EFF[], fit_classifier=false)),
+            ("run-original", "RUN (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_clf; strategy=:constrained, τ=10.0^τ_exponent, a=QUnfoldExperiments.A_EFF[])), # TODO: replace with original RUN
+            ("svd-original", "SVD (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_clf; strategy=:constrained, τ=10.0^τ_exponent, a=QUnfoldExperiments.A_EFF[])), # TODO: replace with original SVD
+            ("run-softmax", "RUN (softmax, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.A_EFF[])),
+            ("svd-softmax", "SVD (softmax, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.A_EFF[])),
         )
         for n_bins ∈ [2, 4]
             push!(methods, # add methods that have τ and n_bins as hyper-parameters
-                ("o-hdx", "o-HDx (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDx(n_bins; strategy=:softmax, τ=10.0^τ_exponent)),
-                ("o-hdy", "o-HDy (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDy(clf, n_bins; strategy=:softmax, τ=10.0^τ_exponent, fit_classifier=false)),
+                ("o-hdx", "o-HDx (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDx(n_bins; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.A_EFF[])),
+                ("o-hdy", "o-HDy (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDy(clf, n_bins; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.A_EFF[], fit_classifier=false)),
             )
         end
     end
