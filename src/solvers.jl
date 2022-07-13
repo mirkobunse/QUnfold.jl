@@ -123,7 +123,7 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     end
 
     # minimum regularized log-likelihood  ∑_{i=1}^F [Mp]_i - q_i ln [Mp]_i  +  τ/2 * (Tp)^2
-    @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * N * p[j] for j in 1:C))
+    @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * (1 + (N-C) * p[j]) for j in 1:C))
     if length(a) > 0
         @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
     else
