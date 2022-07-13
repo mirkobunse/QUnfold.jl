@@ -1,3 +1,4 @@
+using Random
 import ScikitLearnBase
 
 
@@ -124,3 +125,62 @@ end
 
 _fit_transform(t::Nothing, X::Any, y::AbstractVector{T}) where {T<:Integer} = t, X, y
 _transform(f::Nothing, X::Any) = X
+
+
+# tree-induced partitioning
+
+struct TreeTransformer <: AbstractTransformer
+    tree::Any
+    fit_tree::Bool
+    fit_frac::Float64
+    TreeTransformer(tree::Any; fit_tree::Bool=true, fit_frac::Float64=1/5) =
+        new(tree, fit_tree, fit_frac)
+end
+
+struct FittedTreeTransformer <: FittedTransformer
+    tree::Any
+    index_map::Dict{Int,Int}
+    x::Vector{Int} # optional hold-out data to return in _fit_transform
+    y::Vector{Int}
+end
+
+function fit(t::TreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
+    tree = t.tree
+    index_map = Dict{Int,Int}()
+    x = Int[]
+    if t.fit_tree
+        tree = ScikitLearnBase.clone(tree)
+        i_rand = randperm(length(y)) # shuffle (X, y)
+        i_tree = round(Int, length(y) * t.fit_frac) # where to split
+        ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
+
+        # obtain all leaf indices by probing the tree with the training data
+        x = tree.apply(X[i_rand[1:i_tree], :]) # leaf indices (rather arbitrary)
+        index_map = Dict(zip(unique(x), 1:length(unique(x)))) # map to 1, …, F
+
+        # limit (X, y) to the remaining data that was not used for fitting the tree
+        x = tree.apply(X[i_rand[(i_tree+1):end], :]) # apply to the remaining data
+        y = y[i_rand[(i_tree+1):end]]
+    else
+        # guess the leaf indices by probing the tree with the available data
+        x = tree.apply(X)
+        index_map = Dict(zip(unique(x), 1:length(unique(x))))
+    end
+    return FittedTreeTransformer(tree, index_map, [ index_map[x_i] for x_i ∈ x ], y) # map to 1, …, F
+end
+
+function _fit_transform(t::TreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
+    f = fit(t, X, y) # create a FittedTreeTransformer with hold-out data (x, y)
+    fX = onehot_encoding(f.x, 1:length(f.index_map))
+    y = f.y
+    return FittedTreeTransformer(f.tree, f.index_map, Int[], Int[]), fX, y # forget (x, y)
+end
+
+_fit_transform(f::FittedTreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer} =
+    (f, onehot_encoding(f.x, 1:length(f.index_map)), f.y) # assume hold-out data (x, y)
+
+_transform(f::FittedTreeTransformer, X::Any) =
+    onehot_encoding( # histogram representation
+        [ f.index_map[x] for x ∈ f.tree.apply(X) ], # pycall(tree.apply, PyArray, X) # map to 1, …, F
+        1:length(f.index_map)
+    )

@@ -1,11 +1,23 @@
 module QUnfold
 
-using LinearAlgebra, StatsBase
+using LinearAlgebra, Requires, StatsBase
 
-export ACC, CC, ClassTransformer, fit, HDx, HDy, PACC, PCC, predict, RUN, SVD
+export ACC, CC, ClassTransformer, fit, HDx, HDy, PACC, PCC, predict, RUN, SVD, TreeTransformer
 
 include("transformers.jl")
 include("solvers.jl")
+
+# add an additional constructor TreeTransformer(n_bins::Int; ...) when PyCall is loaded
+function __init__()
+    @require PyCall="438e738f-606a-5dbb-bf0a-cddfbfd45ab0" begin
+        sklearn_tree = PyCall.pyimport_conda("sklearn.tree", "scikit-learn")
+        TreeTransformer(n_bins::Int; kwargs...) =
+            TreeTransformer(
+                sklearn_tree.DecisionTreeClassifier(; max_leaf_nodes=n_bins);
+                kwargs...
+            )
+    end
+end
 
 
 # general API
@@ -117,15 +129,15 @@ _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, 
 # RUN and SVD
 
 struct _RUN_SVD <: AbstractMethod
-    transformer::AbstractTransformer
+    transformer::Union{AbstractTransformer,FittedTransformer}
     loss::Symbol # ∈ {:run, :svd}
     τ::Float64 # regularization strength
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :unconstrained}
 end
-RUN(transformer::AbstractTransformer; τ::Float64=1e-6, a::Vector{Float64}=Float64[], strategy=:constrained) =
+RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, a::Vector{Float64}=Float64[], strategy=:constrained) =
     _RUN_SVD(transformer, :run, τ, a, strategy)
-SVD(transformer::AbstractTransformer; τ::Float64=1e-6, a::Vector{Float64}=Float64[], strategy=:constrained) =
+SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, a::Vector{Float64}=Float64[], strategy=:constrained) =
     _RUN_SVD(transformer, :svd, τ, a, strategy)
 _transformer(m::_RUN_SVD) = m.transformer
 _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =

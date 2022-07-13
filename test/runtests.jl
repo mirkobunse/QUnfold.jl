@@ -100,7 +100,7 @@ end # testset
 
     c = RandomForestClassifier(; oob_score=true, random_state=rand(UInt32))
     ScikitLearn.fit!(c, X_trn, y_trn)
-    t = ClassTransformer(c; fit_classifier=false)
+    t = QUnfold.fit(TreeTransformer(9), X_trn, y_trn)
     for (name, method) in [
             "o-ACC (constrained, τ=10.0)" => ACC(c; τ=10.0, strategy=:constrained, fit_classifier=false),
             "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
