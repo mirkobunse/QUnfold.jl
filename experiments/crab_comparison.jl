@@ -83,39 +83,41 @@ function main(;
 
     # read the training set, the validation pool, and the testing pool
     X_trn, y_trn, X_val, y_val, X_tst, y_tst = QUnfoldExperiments.fact_data()
+    n_classes = length(unique(y_trn))
+    n_features = size(X_trn, 2)
 
     clf = QUnfoldExperiments.CachedClassifier(
         RandomForestClassifier(24; oob_score=true, random_state=rand(UInt32), n_jobs=-1)
     )
     @info "Fitting the base classifier to $(length(y_trn)) training items" clf
     ScikitLearn.fit!(clf, X_trn, y_trn)
-    t_clf = ClassTransformer(clf; fit_classifier=false)
 
     methods = []
     for τ_exponent ∈ [3, 1, -1, -3] # τ = 10 ^ τ_exponent
         push!(methods, # add methods that have τ as a hyper-parameter
             ("o-acc", "o-ACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", ACC(clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
             ("o-pacc", "o-PACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", PACC(clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
-            ("run-original", "RUN (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_clf; strategy=:constrained, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())), # TODO: replace with original RUN
-            ("svd-original", "SVD (CONSTRAINED, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_clf; strategy=:constrained, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())), # TODO: replace with original SVD
-            ("run-softmax", "RUN (softmax, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())),
-            ("svd-softmax", "SVD (softmax, \$\\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())),
         )
-        for n_bins ∈ [2, 4]
-            push!(methods, # add methods that have τ and n_bins as hyper-parameters
-                ("o-hdx", "o-HDx (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDx(n_bins; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())),
-                ("o-hdy", "o-HDy (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDy(clf, n_bins; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
-            )
-        end
     end
-    for n_bins ∈ [2, 4]
+    for n_bins ∈ [60, 120, 240]
+        t_tree = QUnfold.fit(TreeTransformer(n_bins), X_trn, y_trn)
         push!(methods, # add methods that have n_bins as a hyper-parameter
             ("hdx", "HDx (constrained, \$B=$(n_bins)\$)", HDx(n_bins; strategy=:constrained)),
             ("hdy", "HDy (constrained, \$B=$(n_bins)\$)", HDy(clf, n_bins; strategy=:constrained, fit_classifier=false)),
         )
+        for τ_exponent ∈ [3, 1, -1, -3]
+            push!(methods, # add methods that have n_bins and τ as hyper-parameters
+                ("run-original", "RUN (CONSTRAINED, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_tree; strategy=:constrained, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())), # TODO: replace with original RUN
+                ("svd-original", "SVD (CONSTRAINED, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_tree; strategy=:constrained, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())), # TODO: replace with original SVD
+                ("run-softmax", "RUN (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_tree; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())),
+                ("svd-softmax", "SVD (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_tree; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())),
+                ("o-hdx", "o-HDx (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDx(floor(Int, n_bins / n_features); strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())),
+                ("o-hdy", "o-HDy (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDy(clf, floor(Int, n_bins / n_classes); strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
+            )
+        end
     end
     # TODO add o-SLD and IBU
-    
+
     @info "Fitting $(length(methods)) methods"
     methods = [ (id, name, QUnfold.fit(method, X_trn, y_trn)) for (id, name, method) ∈ methods ]
 
