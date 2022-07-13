@@ -15,6 +15,7 @@ using
 import ScikitLearn, ScikitLearnBase
 
 RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").RandomForestClassifier
+DecisionTreeClassifier = pyimport_conda("sklearn.tree", "scikit-learn").DecisionTreeClassifier
 
 function evaluate_methods(methods, X_pool, y_pool, n_samples, clf, best=Dict{Tuple{Int64,String},Vector{String}}())
     df = DataFrame(; # result storage
@@ -100,7 +101,11 @@ function main(;
         )
     end
     for n_bins ∈ [60, 120, 240]
-        t_tree = QUnfold.fit(TreeTransformer(n_bins), X_trn, y_trn)
+        tree_clf = QUnfoldExperiments.CachedClassifier(
+            DecisionTreeClassifier(; max_leaf_nodes=n_bins, random_state=rand(UInt32));
+            only_apply = true # only store tree.apply(X), do not allow predictions
+        )
+        t_tree = QUnfold.fit(TreeTransformer(tree_clf), X_trn, y_trn)
         push!(methods, # add methods that have n_bins as a hyper-parameter
             ("hdx", "HDx (constrained, \$B=$(n_bins)\$)", HDx(n_bins; strategy=:constrained)),
             ("hdy", "HDy (constrained, \$B=$(n_bins)\$)", HDy(clf, n_bins; strategy=:constrained, fit_classifier=false)),

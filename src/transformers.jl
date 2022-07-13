@@ -155,15 +155,15 @@ function fit(t::TreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer
         ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
 
         # obtain all leaf indices by probing the tree with the training data
-        x = tree.apply(X[i_rand[1:i_tree], :]) # leaf indices (rather arbitrary)
+        x = _apply_tree(tree, X[i_rand[1:i_tree], :]) # leaf indices (rather arbitrary)
         index_map = Dict(zip(unique(x), 1:length(unique(x)))) # map to 1, …, F
 
         # limit (X, y) to the remaining data that was not used for fitting the tree
-        x = tree.apply(X[i_rand[(i_tree+1):end], :]) # apply to the remaining data
+        x = _apply_tree(tree, X[i_rand[(i_tree+1):end], :]) # apply to the remaining data
         y = y[i_rand[(i_tree+1):end]]
     else
         # guess the leaf indices by probing the tree with the available data
-        x = tree.apply(X)
+        x = _apply_tree(tree, X)
         index_map = Dict(zip(unique(x), 1:length(unique(x))))
     end
     return FittedTreeTransformer(tree, index_map, [ index_map[x_i] for x_i ∈ x ], y) # map to 1, …, F
@@ -181,6 +181,8 @@ _fit_transform(f::FittedTreeTransformer, X::Any, y::AbstractVector{T}) where {T<
 
 _transform(f::FittedTreeTransformer, X::Any) =
     onehot_encoding( # histogram representation
-        [ f.index_map[x] for x ∈ f.tree.apply(X) ], # pycall(tree.apply, PyArray, X) # map to 1, …, F
+        [ f.index_map[x] for x ∈ _apply_tree(f.tree, X) ], # map to 1, …, F
         1:length(f.index_map)
     )
+
+_apply_tree(tree::Any, X::Any) = tree.apply(X)

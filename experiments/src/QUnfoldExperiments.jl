@@ -6,6 +6,7 @@ using
     Discretizers,
     Distributions,
     LinearAlgebra,
+    QUnfold,
     Random,
     Statistics,
     StatsBase,
@@ -18,6 +19,7 @@ const BIN_EDGES = Ref{Vector{Float64}}()
 const FACT_X = Ref{Matrix{Float32}}()
 const FACT_Y = Ref{Vector{Int32}}()
 const P_TRN = Ref{Vector{Float64}}()
+const PYLOCK = Ref{ReentrantLock}()
 
 function __init__()
     fact_dir = "$(dirname(@__DIR__))/data/fact"
@@ -40,47 +42,68 @@ function __init__()
         df_data[!, :log10_energy]
     ))
     P_TRN[] = [ sum(FACT_Y[] .== i) / length(FACT_Y[]) for i in 1:length(BIN_CENTERS[]) ]
+
+    PYLOCK[] = ReentrantLock()
 end
+
+pylock(f::Function) = Base.lock(f, PYLOCK[]) # thread safety for PyCall
 
 mutable struct CachedClassifier
     classifier::Any
     last_X::Any
     last_predict::Vector{Int}
     last_predict_proba::Matrix{Float64}
-    l::ReentrantLock
-    CachedClassifier(c::Any) = new(c, nothing, Int[], Matrix{Float64}(undef, 0, 0), ReentrantLock())
+    only_apply::Bool
+    CachedClassifier(c::Any; only_apply::Bool=false) =
+        new(c, nothing, Int[], Matrix{Float64}(undef, 0, 0), only_apply)
 end
 
-Base.lock(f::Function, c::CachedClassifier) = lock(f, getfield(c, :l))
-Base.hasproperty(c::CachedClassifier, x::Symbol) = lock(c) do
+Base.hasproperty(c::CachedClassifier, x::Symbol) = pylock() do
     x ∈ fieldnames(CachedClassifier) || x ∈ propertynames(c.classifier)
 end
-Base.getproperty(c::CachedClassifier, x::Symbol) = lock(c) do
+Base.getproperty(c::CachedClassifier, x::Symbol) = pylock() do
     x ∈ fieldnames(CachedClassifier) ? getfield(c, x) : getproperty(c.classifier, x)
 end
-ScikitLearnBase.fit!(c::CachedClassifier, X::Any, y::AbstractVector{T}) where {T<:Integer} = lock(c) do
+ScikitLearnBase.fit!(c::CachedClassifier, X::Any, y::AbstractVector{T}) where {T<:Integer} = pylock() do
     ScikitLearnBase.fit!(c.classifier, X, y)
 end
 function ScikitLearnBase.predict(c::CachedClassifier, X::Any)
+    if c.only_apply
+        throw(ArgumentError("predict is only supported if only_apply is false"))
+    end
     _cache!(c, X)
     return c.last_predict
 end
 function ScikitLearnBase.predict_proba(c::CachedClassifier, X::Any)
+    if c.only_apply
+        throw(ArgumentError("predict_proba is only supported if only_apply is false"))
+    end
     _cache!(c, X)
     return c.last_predict_proba
 end
+function QUnfold._apply_tree(c::CachedClassifier, X::Any)
+    if !c.only_apply
+        throw(ArgumentError("_apply_tree is only supported if only_apply is true"))
+    end
+    _cache!(c, X)
+    return c.last_predict # hack: c.apply(X) is stored in c.last_predict
+end
 _cache!(c::CachedClassifier, X::Any) =
     if c.last_X != X
-        lock(c) do
-            c.last_predict_proba = ScikitLearnBase.predict_proba(c.classifier, X)
-            c.last_predict = [ last(idx.I) for idx ∈ argmax(c.last_predict_proba, dims=2)[:] ]
-            c.last_X = X
+        pylock() do
+            if c.only_apply
+                c.last_predict = c.apply(X) # hack: c.apply(X) is stored in c.last_predict
+            else
+                c.last_predict_proba = ScikitLearnBase.predict_proba(c.classifier, X)
+                c.last_predict = [ last(idx.I) for idx ∈ argmax(c.last_predict_proba, dims=2)[:] ]
+            end
         end
+        c.last_X = X
     end
-ScikitLearnBase.clone(c::CachedClassifier) = lock(c) do
-    CachedClassifier(ScikitLearnBase.clone(c.classifier))
+ScikitLearnBase.clone(c::CachedClassifier) = pylock() do
+    CachedClassifier(ScikitLearnBase.clone(c.classifier); only_apply=c.only_apply)
 end
-ScikitLearnBase.get_classes(c::CachedClassifier) = lock(c) do
+ScikitLearnBase.get_classes(c::CachedClassifier) = pylock() do
     ScikitLearnBase.get_classes(c.classifier)
 end
 
