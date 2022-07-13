@@ -100,15 +100,15 @@ function main(;
             ("o-pacc", "o-PACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", PACC(clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
         )
     end
-    for n_bins ∈ [60, 120, 240]
+    for n_bins ∈ [60, 120]
         tree_clf = QUnfoldExperiments.CachedClassifier(
             DecisionTreeClassifier(; max_leaf_nodes=n_bins, random_state=rand(UInt32));
             only_apply = true # only store tree.apply(X), do not allow predictions
         )
         t_tree = QUnfold.fit(TreeTransformer(tree_clf), X_trn, y_trn)
         push!(methods, # add methods that have n_bins as a hyper-parameter
-            ("hdx", "HDx (constrained, \$B=$(n_bins)\$)", HDx(n_bins; strategy=:constrained)),
-            ("hdy", "HDy (constrained, \$B=$(n_bins)\$)", HDy(clf, n_bins; strategy=:constrained, fit_classifier=false)),
+            ("hdx", "HDx (constrained, \$B=$(n_bins)\$)", HDx(floor(Int, n_bins / n_features); strategy=:constrained)),
+            ("hdy", "HDy (constrained, \$B=$(n_bins)\$)", HDy(clf, floor(Int, n_bins / n_classes); strategy=:constrained, fit_classifier=false)),
         )
         for τ_exponent ∈ [3, 1, -1, -3]
             push!(methods, # add methods that have n_bins and τ as hyper-parameters
