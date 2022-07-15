@@ -31,10 +31,9 @@ include("solvers.jl")
 function __init__()
     set_preferences!(ForwardDiff, "nansafe_mode" => true)
     @require PyCall="438e738f-606a-5dbb-bf0a-cddfbfd45ab0" begin
-        sklearn_tree = PyCall.pyimport_conda("sklearn.tree", "scikit-learn")
         TreeTransformer(n_bins::Int; kwargs...) =
             TreeTransformer(
-                sklearn_tree.DecisionTreeClassifier(; max_leaf_nodes=n_bins);
+                PyCall.pyimport_conda("sklearn.tree", "scikit-learn").DecisionTreeClassifier(; max_leaf_nodes=n_bins);
                 kwargs...
             )
     end
