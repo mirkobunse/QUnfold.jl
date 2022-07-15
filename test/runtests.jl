@@ -123,7 +123,7 @@ end # testset
             "SVD (constrained, τ=10.0)" => QUnfold.SVD(t; strategy=:constrained, τ=10.0),
             "SVD (softmax, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax, τ=10.0),
             "o-HDx (constrained, τ=10.0)" => HDx(3; τ=10.0, strategy=:constrained),
-            "HDx (constrained)" => HDx(3; strategy=:constrained),
+            "HDx (constrained)" => HDx(15; strategy=:constrained),
             "HDx (softmax)" => HDx(3; strategy=:softmax),
             "o-HDy (constrained, τ=10.0)" => HDy(c, 3; τ=10.0, strategy=:constrained, fit_classifier=false),
             "HDy (constrained)" => HDy(c, 3; strategy=:constrained, fit_classifier=false),

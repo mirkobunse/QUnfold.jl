@@ -100,7 +100,7 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         0 => fill(2, C),
         1 => fill(-1, C-1)
     )[2:(C-1), :]
-    q *= N # transform q to ̄q
+    q = 1 .+ (N-C) .* q # transform q to \bar{q}
 
     if strategy == :original # here, we assume p contains counts, not probabilities
         if length(a) == 0
@@ -116,7 +116,16 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         # all subsequent estimates optimize a regularized maximum likelihood
         previous_loss = Inf
         for _ in 2:100
-            diff = ForwardDiff.hessian!(diff, p -> sum(M*p - q .* log.(1 .+ M*p)), p_est)
+            try
+                diff = ForwardDiff.hessian!(diff, p -> sum(M*p - q .* log.(1 .+ M*p)), p_est)
+            catch any_error
+                if isa(any_error, DomainError)
+                    @error "INVALID_MODEL with negative components in 1 .+ M*p"
+                    throw(NonOptimalStatusError(INVALID_MODEL))
+                else
+                    rethrow()
+                end
+            end
             loss_p = DiffResults.value(diff)
             gradient_p = DiffResults.gradient(diff)
             hessian_p = DiffResults.hessian(diff)
@@ -224,10 +233,28 @@ end
 
 function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int, n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
     _check_solver_args(M, q)
+    indices = [ (1+(i-1)*n_bins):(i*n_bins) for i in 1:Int(size(M, 1) / n_bins) ]
+    if any(sum(M; dims=2) .== 0)
+        nonzero = sum(M; dims=2)[:] .> 0
+        q = q[nonzero]
+        M = M[nonzero, :]
+        i = 1
+        indices = map(indices) do indices_in
+            indices_out = Int[]
+            for j in indices_in
+                if nonzero[j]
+                    push!(indices_out, i)
+                    i += 1
+                end
+            end
+            indices_out
+        end
+        @debug "HD limited to non-zero dimensions" indices[end][end] sum(map(length, indices)) size(q)
+    end
     model = Model(Ipopt.Optimizer)
     set_silent(model)
     F, C = size(M) # the numbers of "multi-features" and classes
-    n_features = Int(F / n_bins) # the number of actual features in X
+    n_features = length(indices) # the number of actual features in X
     T = LinearAlgebra.diagm( # the Tikhonov matrix for curvature regularization
         -1 => fill(-1, C-1),
         0 => fill(2, C),
@@ -250,7 +277,7 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     # average feature-wise Hellinger distance
     @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * p[j] for j in 1:C))
     @NLexpression(model, squared[i = 1:F], (sqrt(q[i]) - sqrt(Mp[i]))^2)
-    @NLexpression(model, HD[i = 1:n_features], sqrt(sum((squared[j] for j in (1+(i-1)*n_bins):(i*n_bins)))))
+    @NLexpression(model, HD[i = 1:n_features], sqrt(sum((squared[j] for j in indices[i]))))
     if length(a) > 0
         @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
     else
