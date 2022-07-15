@@ -1,6 +1,4 @@
-using JuMP
 import Ipopt, MathOptInterface.TerminationStatusCode
-
 
 # utilities
 
@@ -94,10 +92,8 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
 end
 
 
-function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, n_df::Int=size(M, 2), λ::Float64=1e-6)
     _check_solver_args(M, q)
-    model = Model(Ipopt.Optimizer)
-    set_silent(model)
     F, C = size(M) # the numbers of features and classes
     T = LinearAlgebra.diagm( # the Tikhonov matrix for curvature regularization
         -1 => fill(-1, C-1),
@@ -106,7 +102,68 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     )[2:(C-1), :]
     q *= N # transform q to ̄q
 
+    if strategy == :original # here, we assume p contains counts, not probabilities
+        if length(a) == 0
+            a = ones(C)
+        end
+        p_est = zeros(C) # the estimate of p
+        diff = DiffResults.HessianResult(p_est)
+
+        # first estimate: un-regularized least squares (Eq. 2.38 in blobel1985unfolding)
+        diff = ForwardDiff.hessian!(diff, p -> sum((q - M*p).^2 ./ q) / 2, p_est)
+        p_est += - inv(DiffResults.hessian(diff)) * DiffResults.gradient(diff)
+
+        # all subsequent estimates optimize a regularized maximum likelihood
+        previous_loss = Inf
+        for _ in 2:100
+            diff = ForwardDiff.hessian!(diff, p -> sum(M*p - q .* log.(1 .+ M*p)), p_est)
+            loss_p = DiffResults.value(diff)
+            gradient_p = DiffResults.gradient(diff)
+            hessian_p = DiffResults.hessian(diff)
+
+            # check for convergence
+            if abs(previous_loss - loss_p) < 1e-6
+                break
+            end
+            previous_loss = loss_p
+
+            # eigendecomposition of the Hessian: hessian_p == U*D*U'
+            eigen_p = eigen(hessian_p)
+            U = eigen_p.vectors
+            D = Matrix(Diagonal(eigen_p.values .^ (-1/2))) # D^(-1/2)
+
+            # eigendecomposition of transformed Tikhonov matrix: T_2 == U_T*S*U_T'
+            eigen_T = eigen(Symmetric( D*U' * T'*T * U*D ))
+
+            # select τ (special case: no regularization if n_df == C)
+            τ = n_df < C ? _select_τ(n_df, eigen_T.values)[1] : 0.0
+
+            # Taking a step in the transformed problem and transforming back to the actual
+            # solution is numerically difficult because the eigendecomposition introduces some
+            # error. In the transformed problem, therefore only τ is chosen. The step is taken 
+            # in the original problem instead of the commented-out solution.
+            #
+            # U_T = eigen_T.vectors
+            # S   = diagm(eigen_T.values)
+            # p_2 = 1/2 * inv(eye(S) + τ*S) * (U*D*U_T)' * (hessian_p * f - gradient_p)
+            # p   = (U*D*U_T) * p_2
+            #
+            diff = ForwardDiff.hessian!(
+                diff,
+                p -> τ/2 * sum((T*log10.(1 .+ (N-C) .* a .* p ./ sum(a .* p))).^2),
+                max.(0, p_est)
+            )
+            gradient_p += DiffResults.gradient(diff) # regularized gradient
+            hessian_p += DiffResults.hessian(diff) # regularized Hessian
+            p_est += - inv(hessian_p) * gradient_p
+        end
+        p_est = max.(0, p_est) # map to probabilities
+        return p_est ./ sum(p_est)
+    end
+
     # set up the solution vector p
+    model = Model(Ipopt.Optimizer)
+    set_silent(model)
     if strategy == :softmax
         @variable(model, l[1:C]) # latent variables (unconstrained)
         @NLexpression(model, p[i = 1:C], exp(l[i]) / sum(exp(l[j]) for j in 1:C)) # p = softmax(l)
@@ -143,6 +200,24 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
     elseif strategy ∈ [:constrained, :unconstrained]
         return value.(p)
+    end
+end
+
+# brute-force search of a τ satisfying the n_df relation
+function _select_τ(n_df::Number, eigvals_T::Vector{Float64}, min::Float64=-.01, max::Float64=-18.0, i::Int64=2)
+    τ_candidates = 10 .^ range(min, stop=max, length=1000)
+    n_df_candidates = map(τ -> sum([ 1/(1 + τ*v) for v in eigvals_T ]), τ_candidates)
+    best = findmin(abs.(n_df_candidates .- n_df)) # tuple from difference and index of minimum
+    best_τ = τ_candidates[best[2]]
+    best_n_df = n_df_candidates[best[2]]
+    diff = best[1]
+    if i == 1 # recursive anchor
+        return best_τ, best_n_df, [ diff ]
+    else # search more closely around the best fit
+        max = log10(τ_candidates[best[2] < length(τ_candidates) ? best[2] + 1 : best[2]]) # upper bound of subsequent search
+        min = log10(τ_candidates[best[2] > 1            ? best[2] - 1 : best[2]]) # lower bound
+        subsequent = _select_τ(n_df, eigvals_T, min, max, i-1) # result of recursion
+        return subsequent[1], subsequent[2], vcat(diff, subsequent[3])
     end
 end
 

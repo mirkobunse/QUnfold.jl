@@ -1,6 +1,4 @@
-using Random
 import ScikitLearnBase
-
 
 # general API
 
