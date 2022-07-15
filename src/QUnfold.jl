@@ -153,20 +153,22 @@ struct _RUN_SVD <: AbstractMethod
     transformer::Union{AbstractTransformer,FittedTransformer}
     loss::Symbol # ∈ {:run, :svd}
     τ::Float64 # regularization strength
-    n_df::Int # alternative regularization strength for RUN
+    n_df::Int # alternative regularization strength
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :unconstrained}
 end
 RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:constrained) =
     _RUN_SVD(transformer, :run, τ, n_df, a, strategy)
-SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, a::Vector{Float64}=Float64[], strategy=:constrained) =
-    _RUN_SVD(transformer, :svd, τ, -1, a, strategy)
+SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:constrained) =
+    _RUN_SVD(transformer, :svd, τ, n_df, a, strategy)
 _transformer(m::_RUN_SVD) = m.transformer
 _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     if m.loss == :run
         solve_maximum_likelihood(M, q, N; τ=m.τ, n_df=m.n_df > 0 ? m.n_df : size(M, 2), a=m.a, strategy=m.strategy)
-    elseif m.loss == :svd
-        solve_least_squares(M, q, N; w=_svd_weights(q, N), τ=m.τ, a=m.a, strategy=m.strategy) # weighted least squares
+    elseif m.loss == :svd # weighted least squares
+        strategy = m.strategy == :original ? :svd : m.strategy
+        n_df = m.n_df > 0 ? m.n_df : size(M, 2)
+        solve_least_squares(M, q, N; w=_svd_weights(q, N), τ=m.τ, n_df=n_df, a=m.a, strategy=strategy)
     else
         error("There is no loss \"$(m.loss)\"")
     end

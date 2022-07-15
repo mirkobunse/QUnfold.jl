@@ -31,14 +31,34 @@ end
 
 # solvers
 
-function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, n_df::Int=size(M, 2), a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
     _check_solver_args(M, q)
     if !all(isfinite.(w))
         throw(ArgumentError("Not all values in w are finite"))
     end
+    F, C = size(M) # the numbers of features and classes
+
+    if strategy == :svd # here, we assume p contains counts, not probabilities
+        q = 1 .+ (N-C) .* q # transform q to \bar{q}
+        B = diagm(0 => q)
+        inv_T = inv(diagm(-1=>ones(C-1), 0=>1e-3 .- vcat(1, 2*ones(C-2), 1), 1=>ones(C-1)))
+
+        # re-scaling and rotation steps 1-5 (without step 3) [hoecker1995svd]
+        m, Q = LinearAlgebra.eigen(B) # transformation step 1
+        M_tilde = Matrix(Diagonal(sqrt.(m))) * Q' * M # sqrt by def (33), where M_ii = m_i^2
+        q_tilde = Matrix(Diagonal(sqrt.(m))) * Q' * q
+        U, s, V = LinearAlgebra.svd(M_tilde * inv_T) # transformation step 4
+        d = U' * q_tilde # transformation step 5
+
+        # unfolding steps 2 and 3 [hoecker1995svd]
+        τ = s[n_df]^2 # deconvolution step 2
+        z_τ = d .* s ./ ( s.^2 .+ τ )
+        p_est = max.(0, inv_T * V * z_τ) # step 3 (denoted as w_tau in the paper)
+        return p_est ./ sum(p_est)
+    end
+
     model = Model(Ipopt.Optimizer)
     set_silent(model)
-    F, C = size(M) # the numbers of features and classes
     T = LinearAlgebra.diagm( # the Tikhonov matrix for optional curvature regularization
         -1 => fill(-1, C-1),
         0 => fill(2, C),
