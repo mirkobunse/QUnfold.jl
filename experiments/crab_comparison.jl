@@ -17,7 +17,7 @@ import ScikitLearn, ScikitLearnBase
 RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").RandomForestClassifier
 DecisionTreeClassifier = pyimport_conda("sklearn.tree", "scikit-learn").DecisionTreeClassifier
 
-function evaluate_methods(methods, X_pool, y_pool, n_samples, clf, best=Dict{Tuple{Int64,String},Vector{String}}())
+function evaluate_methods(methods, X_pool, y_pool, n_samples, classifiers, best=Dict{Tuple{Int64,String},Vector{String}}())
     df = DataFrame(; # result storage
         N = Int[],
         protocol = String[],
@@ -41,7 +41,9 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples, clf, best=Dict{Tup
                 # draw a sample (X_p, y_p) from the pool, according to p_true
                 i_p = QUnfoldExperiments.subsample_indices(N, p_true, y_pool)
                 X_p = X_pool[i_p,:]
-                QUnfoldExperiments._cache!(clf, X_p) # cache predictions
+                for clf ∈ classifiers
+                    QUnfoldExperiments._cache!(clf, X_p) # cache predictions
+                end
 
                 outcomes = Array{Vector{Any}}(undef, length(current_methods))
                 Threads.@threads for i_method in 1:length(current_methods)
@@ -94,6 +96,7 @@ function main(;
     ScikitLearn.fit!(clf, X_trn, y_trn)
 
     methods = []
+    classifiers = [ clf ]
     for τ_exponent ∈ [3, 1, -1, -3] # τ = 10 ^ τ_exponent
         push!(methods, # add methods that have τ as a hyper-parameter
             ("o-acc", "o-ACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", ACC(clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
@@ -106,6 +109,7 @@ function main(;
             only_apply = true # only store tree.apply(X), do not allow predictions
         )
         t_tree = QUnfold.fit(TreeTransformer(tree_clf), X_trn, y_trn)
+        push!(classifiers, t_tree.tree)
         push!(methods, # add methods that have n_bins as a hyper-parameter
             ("hdx", "HDx (constrained, \$B=$(n_bins)\$)", HDx(floor(Int, n_bins / n_features); strategy=:constrained)),
             ("hdy", "HDy (constrained, \$B=$(n_bins)\$)", HDy(clf, floor(Int, n_bins / n_classes); strategy=:constrained, fit_classifier=false)),
@@ -131,7 +135,7 @@ function main(;
     methods = [ (id, name, QUnfold.fit(method, X_trn, y_trn)) for (id, name, method) ∈ methods ]
 
     @info "Validating for hyper-parameter optimization"
-    df = evaluate_methods(methods, X_val, y_val, 20, clf) # validate on 20 samples; TODO increase to 1000
+    df = evaluate_methods(methods, X_val, y_val, 20, classifiers) # validate on 20 samples; TODO increase to 1000
 
     # store validation results
     mkpath(dirname(validation_path))
@@ -169,7 +173,7 @@ function main(;
     )
 
     @info "Final testing"
-    df = evaluate_methods(methods, X_tst, y_tst, 20, clf, best) # test on 20 samples; TODO increase to 1000
+    df = evaluate_methods(methods, X_tst, y_tst, 20, classifiers, best) # test on 20 samples; TODO increase to 1000
 
     # aggregate and store testing results
     mkpath(dirname(test_path))
