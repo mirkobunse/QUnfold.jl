@@ -37,6 +37,8 @@ Docstrings contain further information.
 
 The `experiments/` directory contains a Makefile with which you can run the experiments for our LQ2022 submission *On Multi-Class Extensions of Adjusted Classify and Count*.
 
+**CAUTION:** We have run these experiments on 40 cores with 48 GB of RAM; with this setup, the experiments took 67 h. If you just want to check whether the scripts work, you can call `make -f lequa.mk tests` to traverse the entire code path with just a few iterations; this test completes in a few minutes.
+
 ```
 cd experiments/
 make -f lequa.mk -n # inspect all steps of our experimentation without running them (dry-run)
