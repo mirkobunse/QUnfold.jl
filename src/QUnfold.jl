@@ -17,10 +17,12 @@ export
     fit,
     HDx,
     HDy,
+    IBU,
     PACC,
     PCC,
     predict,
     RUN,
+    SLD,
     SVD,
     TreeTransformer
 
@@ -207,5 +209,45 @@ _transformer(m::HDy) = HistogramTransformer(
     )
 _solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     solve_hellinger_distance(M, q, N, m.n_bins; τ=m.τ, a=m.a, strategy=m.strategy)
+
+
+# IBU and SLD
+
+struct IBU <: AbstractMethod
+    transformer::Union{AbstractTransformer,FittedTransformer}
+    o::Int # order of the polynomial
+    λ::Float64 # impact of the polynomial
+    a::Vector{Float64} # acceptance factors for regularization
+    IBU(transformer::Union{AbstractTransformer,FittedTransformer}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[]) =
+        new(transformer, o, λ, a)
+end
+_transformer(m::IBU) = m.transformer
+_solve(m::IBU, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
+    solve_expectation_maximization(M, q, ones(size(M, 2)) ./ size(M, 2); o=m.o, λ=m.λ, a=m.a)
+
+struct SLD <: AbstractMethod
+    classifier::Any
+    o::Int # order of the polynomial
+    λ::Float64 # impact of the polynomial
+    a::Vector{Float64} # acceptance factors for regularization
+    fit_classifier::Bool
+    SLD(classifier::Any; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
+        new(classifier, o, λ, a, fit_classifier)
+end
+function fit(m::SLD, X::Any, y::AbstractVector{T}) where {T <: Integer}
+    t = ClassTransformer(m.classifier; is_probabilistic=true, fit_classifier=m.fit_classifier)
+    f = _fit_transform(t, X, y)[1]
+    p_trn = [ mean(y .== i) for i ∈ 1:length(unique(y)) ]
+    return FittedMethod(m, Matrix{Float64}(undef, 0, 0), f, p_trn)
+end
+predict(m::FittedMethod{SLD,FittedClassTransformer}, X::Any) =
+    solve_expectation_maximization(
+        _transform(m.f, X) ./ m.p_trn', # M = h(x) / p_trn
+        ones(size(X, 1)) ./ size(X, 1), # q = 1/N
+        m.p_trn; # p_0 = p_trn
+        o = m.method.o,
+        λ = m.method.λ,
+        a = m.method.a
+    )
 
 end # module

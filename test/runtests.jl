@@ -130,6 +130,8 @@ end # testset
             "HDy (softmax)" => HDy(c, 3; strategy=:softmax, fit_classifier=false),
             "RUN (original, n_df=2)" => RUN(t; strategy=:original, n_df=2),
             "SVD (original, n_df=2)" => QUnfold.SVD(t; strategy=:original, n_df=2),
+            "IBU (o=2, λ=.5)" => IBU(t; o=2, λ=.5),
+            "o-SLD (o=2, λ=.5)" => SLD(c; o=2, λ=.5),
             # "RUN (unconstrained, τ=10.0)" => RUN(t; strategy=:unconstrained, τ=10.0),
         ]
         @info name p_hat=QUnfold.predict(QUnfold.fit(method, X_trn, y_trn), X_tst)

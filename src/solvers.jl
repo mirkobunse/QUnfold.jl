@@ -319,3 +319,18 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         return value.(p)
     end
 end
+
+function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, p_0::Vector{Float64}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[])
+    F, C = size(M) # the numbers of features and classes
+    p_est = zeros(C) # the estimate
+    for _ ∈ 1:100
+        Mp = M .* p_0' # element-wise multiplication, [M]_ij * [p]_i
+        for i ∈ 1:C
+            p_est[i] = sum(Mp[j,i] * q[j] / sum(Mp[j,:]) for j ∈ 1:F)
+        end
+        p_0 = p_est # prior of the next iteration
+
+        # TODO smoothing
+    end
+    return p_est
+end
