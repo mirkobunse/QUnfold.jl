@@ -223,7 +223,7 @@ struct IBU <: AbstractMethod
 end
 _transformer(m::IBU) = m.transformer
 _solve(m::IBU, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
-    solve_expectation_maximization(M, q, ones(size(M, 2)) ./ size(M, 2); o=m.o, λ=m.λ, a=m.a)
+    solve_expectation_maximization(M, q, N, ones(size(M, 2)) ./ size(M, 2); o=m.o, λ=m.λ, a=m.a)
 
 struct SLD <: AbstractMethod
     classifier::Any
@@ -244,6 +244,7 @@ predict(m::FittedMethod{SLD,FittedClassTransformer}, X::Any) =
     solve_expectation_maximization(
         _transform(m.f, X) ./ m.p_trn', # M = h(x) / p_trn
         ones(size(X, 1)) ./ size(X, 1), # q = 1/N
+        size(X, 1), # N
         m.p_trn; # p_0 = p_trn
         o = m.method.o,
         λ = m.method.λ,

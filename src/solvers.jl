@@ -320,7 +320,7 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     end
 end
 
-function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, p_0::Vector{Float64}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[])
+function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, N::Int, p_0::Vector{Float64}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[])
     F, C = size(M) # the numbers of features and classes
     p_est = zeros(C) # the estimate
     for _ ∈ 1:100
@@ -328,12 +328,12 @@ function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, 
         for i ∈ 1:C
             p_est[i] = sum(Mp[j,i] * q[j] / sum(Mp[j,:]) for j ∈ 1:F)
         end
-        p_0 = λ > 0 ? _smooth(p_est, o, λ, a) : p_est # prior of the next iteration
+        p_0 = λ > 0 ? _smooth(p_est, N, o, λ, a) : p_est # prior of the next iteration
     end
     return p_est
 end
 
-function _smooth(p_est::Vector{Float64}, o::Int, λ::Float64, a::Vector{Float64})
+function _smooth(p_est::Vector{Float64}, N::Int, o::Int, λ::Float64, a::Vector{Float64})
     C = length(p_est)
     p_o = if length(a) > 0 # fit and apply a polynomial to a log10 acceptance correction
             (10 .^ Polynomials.fit(

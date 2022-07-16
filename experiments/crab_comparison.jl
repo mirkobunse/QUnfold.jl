@@ -123,8 +123,17 @@ function main(;
                 ("svd-original", "SVD (original, \$B=$(n_bins), n_{\\mathrm{df}}=$(n_df)\$)", QUnfold.SVD(t_tree; strategy=:original, n_df=n_df, a=QUnfoldExperiments.acceptance_factors())),
             )
         end
+        for o ∈ [0, 1, 2], λ ∈ [.25, .5, 1.]
+            push!(methods,
+                ("ibu", "IBU (\$B=$(n_bins), o=$(o), \\lambda=$(λ)\$)", IBU(t_tree; o=o, λ=λ, a=QUnfoldExperiments.acceptance_factors())),
+            )
+        end
     end
-    # TODO add o-SLD and IBU
+    for o ∈ [0, 1, 2], λ ∈ [.25, .5, 1.]
+        push!(methods,
+            ("o-sld", "o-SLD (o=$(o), \\lambda=$(λ)\$)", SLD(clf; o=o, λ=λ, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
+        )
+    end
 
     @info "Fitting $(length(methods)) methods"
     methods = [ (id, name, QUnfold.fit(method, X_trn, y_trn)) for (id, name, method) ∈ methods ]
@@ -157,7 +166,7 @@ function main(;
     for (id, name, method) ∈ [
             ("acc", "ACC (constrained)", ACC(clf; strategy=:constrained, fit_classifier=false)),
             ("pacc", "PACC (constrained)", PACC(clf; strategy=:constrained, fit_classifier=false)),
-            # TODO add SLD
+            ("sld", "SLD", SLD(clf, fit_classifier=false)),
             ]
         push!(new_methods, (id, name, QUnfold.fit(method, X_trn, y_trn)))
     end
