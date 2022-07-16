@@ -1,4 +1,4 @@
-import Ipopt, MathOptInterface.TerminationStatusCode
+import Ipopt, MathOptInterface.TerminationStatusCode, Polynomials
 
 # utilities
 
@@ -328,9 +328,23 @@ function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, 
         for i ∈ 1:C
             p_est[i] = sum(Mp[j,i] * q[j] / sum(Mp[j,:]) for j ∈ 1:F)
         end
-        p_0 = p_est # prior of the next iteration
-
-        # TODO smoothing
+        p_0 = λ > 0 ? _smooth(p_est, o, λ, a) : p_est # prior of the next iteration
     end
     return p_est
+end
+
+function _smooth(p_est::Vector{Float64}, o::Int, λ::Float64, a::Vector{Float64})
+    C = length(p_est)
+    p_o = if length(a) > 0 # fit and apply a polynomial to a log10 acceptance correction
+            (10 .^ Polynomials.fit(
+                    Float64.(1:C),
+                    log10.(1 .+ p_est .* a .* (N-C) ./ sum(p_est .* a)),
+                    o
+                ).(1:C)) ./ a # also transform back to a non-log non-acceptance version
+        else # fit and apply a polynomial to p_est
+            max.(0, Polynomials.fit(Float64.(1:C), p_est, o).(1:C))
+        end
+    p_o ./= sum(p_o) # normalize to a probability
+    p_o = λ * p_o + (1-λ) * p_est # linear interpolation
+    return p_o ./= sum(p_o) # normalize again
 end
