@@ -54,58 +54,60 @@ mutable struct CachedClassifier
     last_predict::Vector{Int}
     last_predict_proba::Matrix{Float64}
     only_apply::Bool
+    properties::Dict{Symbol,Any}
+    classes::Vector{Int32}
     CachedClassifier(c::Any; only_apply::Bool=false) =
-        new(c, nothing, Int[], Matrix{Float64}(undef, 0, 0), only_apply)
+        new(c, nothing, Int[], Matrix{Float64}(undef, 0, 0), only_apply, Dict{Symbol,Any}(), Int32[])
 end
 
-Base.hasproperty(c::CachedClassifier, x::Symbol) = pylock() do
-    x ∈ fieldnames(CachedClassifier) || x ∈ propertynames(c.classifier)
-end
-Base.getproperty(c::CachedClassifier, x::Symbol) = pylock() do
-    x ∈ fieldnames(CachedClassifier) ? getfield(c, x) : getproperty(c.classifier, x)
-end
+Base.hasproperty(c::CachedClassifier, x::Symbol) =
+    x ∈ fieldnames(CachedClassifier) || x ∈ keys(getfield(c, :properties))
+Base.getproperty(c::CachedClassifier, x::Symbol) =
+    x ∈ fieldnames(CachedClassifier) ? getfield(c, x) : getfield(c, :properties)[x]
 ScikitLearnBase.fit!(c::CachedClassifier, X::Any, y::AbstractVector{T}) where {T<:Integer} = pylock() do
-    ScikitLearnBase.fit!(c.classifier, X, y)
+    ScikitLearnBase.fit!(getfield(c, :classifier), X, y)
+    setfield!(c, :properties, Dict(x => getproperty(getfield(c, :classifier), x) for x ∈ propertynames(getfield(c, :classifier))))
+    setfield!(c, :classes, ScikitLearnBase.get_classes(getfield(c, :classifier)))
+    return c
 end
 function ScikitLearnBase.predict(c::CachedClassifier, X::Any)
-    if c.only_apply
+    if getfield(c, :only_apply)
         throw(ArgumentError("predict is only supported if only_apply is false"))
     end
     _cache!(c, X)
-    return c.last_predict
+    return getfield(c, :last_predict)
 end
 function ScikitLearnBase.predict_proba(c::CachedClassifier, X::Any)
-    if c.only_apply
+    if getfield(c, :only_apply)
         throw(ArgumentError("predict_proba is only supported if only_apply is false"))
     end
     _cache!(c, X)
-    return c.last_predict_proba
+    return getfield(c, :last_predict_proba)
 end
 function QUnfold._apply_tree(c::CachedClassifier, X::Any)
-    if !c.only_apply
+    if !getfield(c, :only_apply)
         throw(ArgumentError("_apply_tree is only supported if only_apply is true"))
     end
     _cache!(c, X)
-    return c.last_predict # hack: c.apply(X) is stored in c.last_predict
+    return getfield(c, :last_predict) # hack: c.classifier.apply(X) is stored in c.last_predict
 end
 _cache!(c::CachedClassifier, X::Any) =
-    if c.last_X != X
+    if getfield(c, :last_X) != X
         pylock() do
-            if c.only_apply
-                c.last_predict = c.apply(X) # hack: c.apply(X) is stored in c.last_predict
+            if getfield(c, :only_apply)
+                setfield!(c, :last_predict, getfield(c, :classifier).apply(X)) # hack
             else
-                c.last_predict_proba = ScikitLearnBase.predict_proba(c.classifier, X)
-                c.last_predict = [ last(idx.I) for idx ∈ argmax(c.last_predict_proba, dims=2)[:] ]
+                pXY = ScikitLearnBase.predict_proba(getfield(c, :classifier), X)
+                setfield!(c, :last_predict_proba, pXY)
+                setfield!(c, :last_predict, [ last(idx.I) for idx ∈ argmax(pXY, dims=2)[:] ])
             end
         end
-        c.last_X = X
+        setfield!(c, :last_X, X)
     end
 ScikitLearnBase.clone(c::CachedClassifier) = pylock() do
-    CachedClassifier(ScikitLearnBase.clone(c.classifier); only_apply=c.only_apply)
+    CachedClassifier(ScikitLearnBase.clone(getfield(c, :classifier)); only_apply=getfield(c, :only_apply))
 end
-ScikitLearnBase.get_classes(c::CachedClassifier) = pylock() do
-    ScikitLearnBase.get_classes(c.classifier)
-end
+ScikitLearnBase.get_classes(c::CachedClassifier) = getfield(c, :classes)
 
 
 """
