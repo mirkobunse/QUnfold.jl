@@ -41,7 +41,6 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples, best=Dict{Tuple{In
                 # draw a sample (X_p, y_p) from the pool, according to p_true
                 i_p = QUnfoldExperiments.subsample_indices(N, p_true, y_pool)
                 X_p = X_pool[i_p,:]
-                GC.gc()
 
                 outcomes = Array{Vector{Any}}(undef, length(current_methods))
                 Threads.@threads for i_method in 1:length(current_methods)
