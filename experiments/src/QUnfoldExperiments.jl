@@ -87,8 +87,8 @@ ScikitLearnBase.predict_proba(c::CachedClassifier, X::Any) =
         getfield(c, :last_predict_proba)
     end
 QUnfold._apply_tree(c::CachedClassifier, X::Any) =
-    if getfield(c, :only_apply)
-        throw(ArgumentError("_apply_tree is only supported if only_apply is false"))
+    if !getfield(c, :only_apply)
+        throw(ArgumentError("_apply_tree is only supported if only_apply is true"))
     elseif getfield(c, :last_X) != X
         throw(ArgumentError("cache!(c, X) must be called before _apply_tree(c, X)"))
     else
