@@ -142,6 +142,9 @@ function main(;
 
     @info "Fitting $(length(methods)) methods"
     methods = [ (id, name, QUnfold.fit(method, X_trn, y_trn)) for (id, name, method) ∈ methods ]
+    for clf ∈ classifiers
+        setfield!(clf, :cold_cache_warnings, true)
+    end
 
     @info "Validating for hyper-parameter optimization"
     df = evaluate_methods(methods, X_val, y_val, 20, classifiers) # validate on 20 samples; TODO increase to 1000

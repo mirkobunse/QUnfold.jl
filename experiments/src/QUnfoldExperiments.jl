@@ -56,8 +56,9 @@ mutable struct CachedClassifier
     only_apply::Bool
     properties::Dict{Symbol,Any}
     classes::Vector{Int32}
+    cold_cache_warnings::Bool
     CachedClassifier(c::Any; only_apply::Bool=false) =
-        new(c, nothing, Int[], Matrix{Float64}(undef, 0, 0), only_apply, Dict{Symbol,Any}(), Int32[])
+        new(c, nothing, Int[], Matrix{Float64}(undef, 0, 0), only_apply, Dict{Symbol,Any}(), Int32[], false)
 end
 
 Base.hasproperty(c::CachedClassifier, x::Symbol) =
@@ -70,40 +71,46 @@ ScikitLearnBase.fit!(c::CachedClassifier, X::Any, y::AbstractVector{T}) where {T
     setfield!(c, :classes, ScikitLearnBase.get_classes(getfield(c, :classifier)))
     return c
 end
-ScikitLearnBase.predict(c::CachedClassifier, X::Any) =
+function ScikitLearnBase.predict(c::CachedClassifier, X::Any)
     if getfield(c, :only_apply)
         throw(ArgumentError("predict is only supported if only_apply is false"))
     elseif getfield(c, :last_X) != X
-        throw(ArgumentError("cache!(c, X) must be called before predict(c, X)"))
-    else
-        getfield(c, :last_predict)
+        if getfield(c, :cold_cache_warnings)
+            @warn "Calling predict(c, X) before _cache!(c, X) is called"
+        end
+        _cache!(c, X)
     end
-ScikitLearnBase.predict_proba(c::CachedClassifier, X::Any) =
+    return getfield(c, :last_predict)
+end
+function ScikitLearnBase.predict_proba(c::CachedClassifier, X::Any)
     if getfield(c, :only_apply)
         throw(ArgumentError("predict_proba is only supported if only_apply is false"))
     elseif getfield(c, :last_X) != X
-        throw(ArgumentError("cache!(c, X) must be called before predict_proba(c, X)"))
-    else
-        getfield(c, :last_predict_proba)
+        if getfield(c, :cold_cache_warnings)
+            @warn "Calling predict_proba(c, X) before _cache!(c, X) is called"
+        end
+        _cache!(c, X)
     end
-QUnfold._apply_tree(c::CachedClassifier, X::Any) =
+    return getfield(c, :last_predict_proba)
+end
+function QUnfold._apply_tree(c::CachedClassifier, X::Any)
     if !getfield(c, :only_apply)
         throw(ArgumentError("_apply_tree is only supported if only_apply is true"))
     elseif getfield(c, :last_X) != X
-        throw(ArgumentError("cache!(c, X) must be called before _apply_tree(c, X)"))
-    else
-        getfield(c, :last_predict) # hack: c.classifier.apply(X) is stored in c.last_predict
+        if getfield(c, :cold_cache_warnings)
+            @warn "Calling _apply_tree(c, X) before _cache!(c, X) is called"
+        end
+        _cache!(c, X)
     end
-_cache!(c::CachedClassifier, X::Any) =
-    if getfield(c, :last_X) != X
-        pylock() do
-            if getfield(c, :only_apply)
-                setfield!(c, :last_predict, getfield(c, :classifier).apply(X)) # hack
-            else
-                pXY = ScikitLearnBase.predict_proba(getfield(c, :classifier), X)
-                setfield!(c, :last_predict_proba, pXY)
-                setfield!(c, :last_predict, [ last(idx.I) for idx ∈ argmax(pXY, dims=2)[:] ])
-            end
+    return getfield(c, :last_predict) # hack: c.classifier.apply(X) is stored in c.last_predict
+end
+_cache!(c::CachedClassifier, X::Any) = pylock() do
+        if getfield(c, :only_apply)
+            setfield!(c, :last_predict, getfield(c, :classifier).apply(X)) # hack
+        else
+            pXY = ScikitLearnBase.predict_proba(getfield(c, :classifier), X)
+            setfield!(c, :last_predict_proba, pXY)
+            setfield!(c, :last_predict, [ last(idx.I) for idx ∈ argmax(pXY, dims=2)[:] ])
         end
         setfield!(c, :last_X, X)
     end
