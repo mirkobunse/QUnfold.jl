@@ -70,27 +70,30 @@ ScikitLearnBase.fit!(c::CachedClassifier, X::Any, y::AbstractVector{T}) where {T
     setfield!(c, :classes, ScikitLearnBase.get_classes(getfield(c, :classifier)))
     return c
 end
-function ScikitLearnBase.predict(c::CachedClassifier, X::Any)
+ScikitLearnBase.predict(c::CachedClassifier, X::Any) =
     if getfield(c, :only_apply)
         throw(ArgumentError("predict is only supported if only_apply is false"))
+    elseif getfield(c, :last_X) != X
+        throw(ArgumentError("cache!(c, X) must be called before predict(c, X)"))
+    else
+        getfield(c, :last_predict)
     end
-    _cache!(c, X)
-    return getfield(c, :last_predict)
-end
-function ScikitLearnBase.predict_proba(c::CachedClassifier, X::Any)
+ScikitLearnBase.predict_proba(c::CachedClassifier, X::Any) =
     if getfield(c, :only_apply)
         throw(ArgumentError("predict_proba is only supported if only_apply is false"))
+    elseif getfield(c, :last_X) != X
+        throw(ArgumentError("cache!(c, X) must be called before predict_proba(c, X)"))
+    else
+        getfield(c, :last_predict_proba)
     end
-    _cache!(c, X)
-    return getfield(c, :last_predict_proba)
-end
-function QUnfold._apply_tree(c::CachedClassifier, X::Any)
-    if !getfield(c, :only_apply)
-        throw(ArgumentError("_apply_tree is only supported if only_apply is true"))
+QUnfold._apply_tree(c::CachedClassifier, X::Any) =
+    if getfield(c, :only_apply)
+        throw(ArgumentError("_apply_tree is only supported if only_apply is false"))
+    elseif getfield(c, :last_X) != X
+        throw(ArgumentError("cache!(c, X) must be called before _apply_tree(c, X)"))
+    else
+        getfield(c, :last_predict) # hack: c.classifier.apply(X) is stored in c.last_predict
     end
-    _cache!(c, X)
-    return getfield(c, :last_predict) # hack: c.classifier.apply(X) is stored in c.last_predict
-end
 _cache!(c::CachedClassifier, X::Any) =
     if getfield(c, :last_X) != X
         pylock() do
