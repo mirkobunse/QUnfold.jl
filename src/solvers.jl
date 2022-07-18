@@ -157,9 +157,12 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
             previous_loss = loss_p
 
             # eigendecomposition of the Hessian: hessian_p == U*D*U'
-            eigen_p = eigen(hessian_p)
-            U = eigen_p.vectors
-            D = Matrix(Diagonal(eigen_p.values .^ (-1/2))) # D^(-1/2)
+            u, U = LinearAlgebra.eigen(hessian_p)
+            for i ∈ findall(u .< 0) # occurs very rarely
+                u[i] = -u[i]
+                U[:,i] = -U[:,i]
+            end
+            D = Matrix(Diagonal(u .^ (-1/2))) # D^(-1/2)
 
             # eigendecomposition of transformed Tikhonov matrix: T_2 == U_T*S*U_T'
             eigen_T = eigen(Symmetric( D*U' * T'*T * U*D ))
