@@ -81,6 +81,7 @@ function main(;
         poisson_path :: String = "results/crab_comparison_poisson.tex",
         test_path :: String = "results/crab_comparison_test.csv",
         validation_path :: String = "results/crab_comparison_validation.csv",
+        read_validation :: Bool = false
         )
     Random.seed!(876) # make this experiment reproducible
 
@@ -146,13 +147,19 @@ function main(;
         setfield!(clf, :cold_cache_warnings, true)
     end
 
-    @info "Validating for hyper-parameter optimization"
-    df = evaluate_methods(methods, X_val, y_val, 20, classifiers) # validate on 20 samples; TODO increase to 1000
+    df = DataFrame()
+    if read_validation
+        @info "Reading validation results from $(validation_path)"
+        df = CSV.read(validation_path, DataFrame)
+    else
+        @info "Validating for hyper-parameter optimization"
+        df = evaluate_methods(methods, X_val, y_val, 20, classifiers) # validate on 20 samples; TODO increase to 1000
 
-    # store validation results
-    mkpath(dirname(validation_path))
-    CSV.write(validation_path, df)
-    @info "$(nrow(df)) results written to $(validation_path)"
+        # store validation results
+        mkpath(dirname(validation_path))
+        CSV.write(validation_path, df)
+        @info "$(nrow(df)) results written to $(validation_path)"
+    end
 
     @info "Selecting the best hyper-parameters"
     df_best = combine(
