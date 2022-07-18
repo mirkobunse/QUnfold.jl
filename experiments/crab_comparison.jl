@@ -151,6 +151,7 @@ function main(;
     if read_validation
         @info "Reading validation results from $(validation_path)"
         df = CSV.read(validation_path, DataFrame)
+        df[!,:exception] = coalesce.(df[!,:exception], "")
     else
         @info "Validating for hyper-parameter optimization"
         df = evaluate_methods(methods, X_val, y_val, 20, classifiers) # validate on 20 samples; TODO increase to 1000
