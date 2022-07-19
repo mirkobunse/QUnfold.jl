@@ -83,7 +83,8 @@ function main(;
         test_path :: String = "results/crab_comparison_test.csv",
         validation_path :: String = "results/crab_comparison_validation.csv",
         read_validation :: Bool = false,
-        read_test :: Bool = false
+        read_test :: Bool = false,
+        is_test_run :: Bool = false
         )
     Random.seed!(876) # make this experiment reproducible
 
@@ -99,14 +100,14 @@ function main(;
         n_features = size(X_trn, 2)
 
         clf = QUnfoldExperiments.CachedClassifier(
-            RandomForestClassifier(24; oob_score=true, random_state=rand(UInt32), n_jobs=-1)
+            RandomForestClassifier(is_test_run ? 24 : 100; oob_score=true, random_state=rand(UInt32), n_jobs=-1)
         )
         @info "Fitting the base classifier to $(length(y_trn)) training items" clf
         ScikitLearn.fit!(clf, X_trn, y_trn)
 
         methods = []
         classifiers = [ clf ]
-        for τ_exponent ∈ [3, 1, -1, -3] # τ = 10 ^ τ_exponent
+        for τ_exponent ∈ (is_test_run ? [-1] : [3, 1, -1, -3]) # τ = 10 ^ τ_exponent
             push!(methods, # add methods that have τ as a hyper-parameter
                 ("o-acc", "o-ACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", ACC(clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
                 ("o-pacc", "o-PACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", PACC(clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
@@ -123,7 +124,7 @@ function main(;
                 ("hdx", "HDx (constrained, \$B=$(n_bins)\$)", HDx(floor(Int, n_bins / n_features); strategy=:constrained)),
                 ("hdy", "HDy (constrained, \$B=$(n_bins)\$)", HDy(clf, floor(Int, n_bins / n_classes); strategy=:constrained, fit_classifier=false)),
             )
-            for τ_exponent ∈ [3, 1, -1, -3]
+            for τ_exponent ∈ (is_test_run ? [-1] : [3, 1, -1, -3])
                 push!(methods, # add methods that have n_bins and τ as hyper-parameters
                     ("run-softmax", "RUN (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", QUnfold.RUN(t_tree; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())),
                     ("svd-softmax", "SVD (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", QUnfold.SVD(t_tree; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors())),
@@ -131,19 +132,19 @@ function main(;
                     ("o-hdy", "o-HDy (softmax, \$B=$(n_bins), \\tau=10^{$(τ_exponent)}\$)", HDy(clf, floor(Int, n_bins / n_classes); strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
                 )
             end
-            for n_df ∈ [10, 8, 6]
+            for n_df ∈ (is_test_run ? [8] : [10, 8, 6])
                 push!(methods, # add methods that have n_bins and n_df as hyper-parameters
                     ("run-original", "RUN (original, \$B=$(n_bins), n_{\\mathrm{df}}=$(n_df)\$)", QUnfold.RUN(t_tree; strategy=:original, n_df=n_df, a=QUnfoldExperiments.acceptance_factors())),
                     ("svd-original", "SVD (original, \$B=$(n_bins), n_{\\mathrm{df}}=$(n_df)\$)", QUnfold.SVD(t_tree; strategy=:original, n_df=n_df, a=QUnfoldExperiments.acceptance_factors())),
                 )
             end
-            for o ∈ [0, 1, 2], λ ∈ [.2, .5]
+            for o ∈ (is_test_run ? [0] : [0, 1, 2]), λ ∈ (is_test_run ? [.2] : [.2, .5])
                 push!(methods,
                     ("ibu", "IBU (\$B=$(n_bins), o=$(o), \\lambda=$(λ)\$)", IBU(t_tree; o=o, λ=λ, a=QUnfoldExperiments.acceptance_factors())),
                 )
             end
         end
-        for o ∈ [0, 1, 2], λ ∈ [.25, .5, 1.]
+        for o ∈ (is_test_run ? [0] : [0, 1, 2]), λ ∈ (is_test_run ? [.2] : [.2, .5])
             push!(methods,
                 ("o-sld", "o-SLD (\$o=$(o), \\lambda=$(λ)\$)", SLD(clf; o=o, λ=λ, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
             )
@@ -162,7 +163,7 @@ function main(;
             df[!,:exception] = coalesce.(df[!,:exception], "")
         else
             @info "Validating for hyper-parameter optimization"
-            df = evaluate_methods(methods, X_val, y_val, 20, classifiers) # validate on 20 samples; TODO increase to 1000
+            df = evaluate_methods(methods, X_val, y_val, is_test_run ? 10 : 1000, classifiers)
 
             # store validation results
             mkpath(dirname(validation_path))
@@ -201,7 +202,7 @@ function main(;
         )
 
         @info "Final testing"
-        df = evaluate_methods(methods, X_tst, y_tst, 20, classifiers, best) # test on 20 samples; TODO increase to 1000
+        df = evaluate_methods(methods, X_tst, y_tst, is_test_run ? 10 : 1000, classifiers, best)
 
         # aggregate and store testing results
         mkpath(dirname(test_path))
@@ -251,4 +252,40 @@ function main(;
         @info "Results of $(protocol) written to $(protocol_path)"
     end
     return df
+end
+
+# command line interface
+function parse_commandline()
+    s = ArgParseSettings()
+    @add_arg_table s begin
+        "--read_validation"
+            help = "whether to read the validation results instead of validating"
+            action = :store_true
+        "--read_test"
+            help = "whether to read the test results instead of testing"
+            action = :store_true
+        "--is_test_run", "-t"
+            help = "whether this run is shortened for testing purposes"
+            action = :store_true
+        "--test_path"
+            help = "the output path of the test results"
+            default = "results/crab_comparison_test.csv"
+        "--validation_path"
+            help = "the output path of the validation results"
+            default = "results/crab_comparison_validation.csv"
+        "app_oq_path"
+            help = "the output path of the APP-OQ (1%) LaTeX table"
+            required = true
+        "npp_crab_path"
+            help = "the output path of the NPP (Crab) LaTeX table"
+            required = true
+        "poisson_path"
+            help = "the output path of the Poisson LaTeX table"
+            required = true
+    end
+    return parse_args(s; as_symbols=true)
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    main(; parse_commandline()...)
 end
