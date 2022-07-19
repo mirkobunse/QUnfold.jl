@@ -236,8 +236,8 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
 end
 
 # brute-force search of a τ satisfying the n_df relation
-function _select_τ(n_df::Number, eigvals_T::Vector{Float64}, min::Float64=-.01, max::Float64=-18.0, i::Int64=2)
-    τ_candidates = 10 .^ range(min, stop=max, length=1000)
+function _select_τ(n_df::Number, eigvals_T::Vector{Float64}, min::Float64=-12.0, max::Float64=6.0, i::Int64=2)
+    τ_candidates = 10 .^ range(min, stop=max, length=100)
     n_df_candidates = map(τ -> sum([ 1/(1 + τ*v) for v in eigvals_T ]), τ_candidates)
     best = findmin(abs.(n_df_candidates .- n_df)) # tuple from difference and index of minimum
     best_τ = τ_candidates[best[2]]
