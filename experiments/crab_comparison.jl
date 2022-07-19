@@ -77,9 +77,7 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples, classifiers, best=
 end
 
 function main(;
-        app_oq_path :: String = "results/crab_comparison_app_oq.tex",
-        npp_crab_path :: String = "results/crab_comparison_npp_crab.tex",
-        poisson_path :: String = "results/crab_comparison_poisson.tex",
+        output_path :: String = "results/crab_comparison.tex",
         test_path :: String = "results/crab_comparison_test.csv",
         validation_path :: String = "results/crab_comparison_validation.csv",
         read_validation :: Bool = false,
@@ -215,42 +213,43 @@ function main(;
         :nmd => DataFrames.mean => :nmd,
         :nmd => DataFrames.std => :std
     )
-    for (protocol, protocol_path) ∈ [
-            ("APP-OQ (1\\%)", app_oq_path),
-            ("NPP (Crab)", npp_crab_path),
-            ("Poisson", poisson_path)
-            ]
-        protocol_df = sort(df[df[!,:protocol] .== protocol,:], [:N, :nmd])
-        protocol_df[!,:NMD] = [
-                "\$" * @sprintf("%.5f", x)[2:end] * "\\pm" * @sprintf("%.5f", y)[2:end] * "\$"
-                for (x, y) ∈ zip(protocol_df[!,:nmd], protocol_df[!,:std])
-            ]
-        protocol_df[!,:method] = [
-                get(Dict(
-                        "o-acc" => "o-ACC (softmax)",
-                        "o-pacc" => "o-PACC (softmax)",
-                        "hdx" => "HDx (constrained)",
-                        "hdy" => "HDy (constrained)",
-                        "run-softmax" => "RUN (softmax)",
-                        "svd-softmax" => "SVD (softmax)",
-                        "o-hdx" => "o-HDx (softmax)",
-                        "o-hdy" => "o-HDy (softmax)",
-                        "run-original" => "RUN (original)",
-                        "svd-original" => "SVD (original)",
-                        "ibu" => "IBU",
-                        "o-sld" => "o-SLD",
-                        "acc" => "ACC (constrained)",
-                        "pacc" => "PACC (constrained)",
-                        "sld" => "SLD"
-                    ), x, y)
-                for (x, y) ∈ zip(protocol_df[!,:method_id], protocol_df[!,:method_name])
-            ]
-        QUnfoldExperiments.export_table(
-            protocol_path,
-            protocol_df[:,[:N, :method, :NMD]]
-        )
-        @info "Results of $(protocol) written to $(protocol_path)"
+    df[!,:value] = [
+        "\$" * @sprintf("%.4f", x)[2:end] * "\\pm" * @sprintf("%.4f", y)[2:end] * "\$"
+        for (x, y) ∈ zip(df[!,:nmd], df[!,:std])
+    ]
+    df[!,:column] = df[!,:protocol] .* [ ", N = $(N)" for N in df[!,:N] ]
+    df[!,:method] = [
+        get(Dict( # leading number allows ordering; will be removed
+                "run-original" => "01 RUN (original)",
+                "svd-original" => "02 SVD (original)",
+                "ibu" => "03 IBU",
+                "acc" => "04 ACC (constrained)",
+                "pacc" => "05 PACC (constrained)",
+                "hdx" => "06 HDx (constrained)",
+                "hdy" => "07 HDy (constrained)",
+                "run-softmax" => "08 RUN (softmax)",
+                "svd-softmax" => "09 SVD (softmax)",
+                "o-acc" => "10 o-ACC (softmax)",
+                "o-pacc" => "11 o-PACC (softmax)",
+                "o-hdx" => "12 o-HDx (softmax)",
+                "o-hdy" => "13 o-HDy (softmax)",
+                "o-sld" => "14 o-SLD",
+                "sld" => "15 SLD"
+            ), x, y)
+        for (x, y) ∈ zip(df[!,:method_id], df[!,:method_name])
+    ]
+    df = sort( # long to wide format, sorted by method name
+        unstack(df[:,[:method, :column, :value]], :method, :column, :value),
+        :method
+    )
+    df[!,:method] = [ x[4:end] for x ∈ df[!,:method] ] # remove leading number
+    for c ∈ propertynames(df)[2:end]
+        nmd = [ parse(Float64, "0" * m[1]) for m ∈ match.(r"\$(.\d+)\\pm(.\d+)\$", df[!,c]) ]
+        i = findall(nmd .== minimum(nmd)) # indices of all minimum average NMDs
+        df[i, c] = "\$\\mathbf{" .* [ x[2:end-1] for x ∈ df[i, c] ] .* "}\$"
     end
+    QUnfoldExperiments.export_table(output_path, df)
+    @info "LaTeX table written to $(output_path)"
     return df
 end
 
@@ -273,14 +272,8 @@ function parse_commandline()
         "--validation_path"
             help = "the output path of the validation results"
             default = "results/crab_comparison_validation.csv"
-        "app_oq_path"
-            help = "the output path of the APP-OQ (1%) LaTeX table"
-            required = true
-        "npp_crab_path"
-            help = "the output path of the NPP (Crab) LaTeX table"
-            required = true
-        "poisson_path"
-            help = "the output path of the Poisson LaTeX table"
+        "output_path"
+            help = "the output path of the LaTeX table"
             required = true
     end
     return parse_args(s; as_symbols=true)
