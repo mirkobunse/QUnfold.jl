@@ -129,7 +129,7 @@ function main(;
                 ("svd-original", "SVD (original, \$B=$(n_bins), n_{\\mathrm{df}}=$(n_df)\$)", QUnfold.SVD(t_tree; strategy=:original, n_df=n_df, a=QUnfoldExperiments.acceptance_factors())),
             )
         end
-        for o ∈ [0, 1, 2], λ ∈ [.25, .5, 1.]
+        for o ∈ [0, 1, 2], λ ∈ [.2, .5]
             push!(methods,
                 ("ibu", "IBU (\$B=$(n_bins), o=$(o), \\lambda=$(λ)\$)", IBU(t_tree; o=o, λ=λ, a=QUnfoldExperiments.acceptance_factors())),
             )
