@@ -77,7 +77,8 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples, classifiers, best=
 end
 
 function main(;
-        output_path :: String = "results/crab_comparison.tex",
+        output_path_01k :: String = "results/crab_comparison_01k.tex",
+        output_path_10k :: String = "results/crab_comparison_10k.tex",
         test_path :: String = "results/crab_comparison_test.csv",
         validation_path :: String = "results/crab_comparison_validation.csv",
         read_validation :: Bool = false,
@@ -208,6 +209,7 @@ function main(;
         @info "$(nrow(df)) results written to $(test_path)"
     end # if read_test
 
+    # aggregation and export
     df = combine( # average NMDs
         groupby(df[df[!,:exception].=="",:], [:N, :protocol, :method_id, :method_name]),
         :nmd => DataFrames.mean => :nmd,
@@ -217,7 +219,6 @@ function main(;
         "\$" * @sprintf("%.4f", x)[2:end] * "\\pm" * @sprintf("%.4f", y)[2:end] * "\$"
         for (x, y) ∈ zip(df[!,:nmd], df[!,:std])
     ]
-    df[!,:column] = df[!,:protocol] .* [ ", N = $(N)" for N in df[!,:N] ]
     df[!,:method] = [
         get(Dict( # leading number allows ordering; will be removed
                 "run-original" => "01 RUN (original)",
@@ -238,18 +239,20 @@ function main(;
             ), x, y)
         for (x, y) ∈ zip(df[!,:method_id], df[!,:method_name])
     ]
-    df = sort( # long to wide format, sorted by method name
-        unstack(df[:,[:method, :column, :value]], :method, :column, :value),
-        :method
-    )
-    df[!,:method] = [ x[4:end] for x ∈ df[!,:method] ] # remove leading number
-    for c ∈ propertynames(df)[2:end]
-        nmd = [ parse(Float64, "0" * m[1]) for m ∈ match.(r"\$(.\d+)\\pm(.\d+)\$", df[!,c]) ]
-        i = findall(nmd .== minimum(nmd)) # indices of all minimum average NMDs
-        df[i, c] = "\$\\mathbf{" .* [ x[2:end-1] for x ∈ df[i, c] ] .* "}\$"
+    for (N, path_N) in [ (1000, output_path_01k), (10000, output_path_10k) ]
+        df_N = sort( # long to wide format, sorted by method name
+            unstack(df[df[!,:N] .== N, [:method, :protocol, :value]], :method, :protocol, :value),
+            :method
+        )
+        df_N[!,:method] = [ x[4:end] for x ∈ df_N[!,:method] ] # remove leading number
+        for c ∈ propertynames(df_N)[2:end]
+            nmd = [ parse(Float64, "0" * m[1]) for m ∈ match.(r"\$(.\d+)\\pm(.\d+)\$", df_N[!,c]) ]
+            i = findall(nmd .== minimum(nmd)) # indices of all minimum average NMDs
+            df_N[i, c] = "\$\\mathbf{" .* [ x[2:end-1] for x ∈ df_N[i, c] ] .* "}\$"
+        end
+        QUnfoldExperiments.export_table(path_N, df_N)
+        @info "LaTeX table written to $(path_N)"
     end
-    QUnfoldExperiments.export_table(output_path, df)
-    @info "LaTeX table written to $(output_path)"
     return df
 end
 
@@ -272,8 +275,11 @@ function parse_commandline()
         "--validation_path"
             help = "the output path of the validation results"
             default = "results/crab_comparison_validation.csv"
-        "output_path"
-            help = "the output path of the LaTeX table"
+        "output_path_01k"
+            help = "the output path of the N=1000 LaTeX table"
+            required = true
+        "output_path_10k"
+            help = "the output path of the N=10000 LaTeX table"
             required = true
     end
     return parse_args(s; as_symbols=true)
