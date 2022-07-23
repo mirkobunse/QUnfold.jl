@@ -158,14 +158,10 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
 
             # eigendecomposition of the Hessian: hessian_p == U*D*U'
             u, U = LinearAlgebra.eigen(hessian_p)
-            if any(isa.(u, Complex)) # occurs very rarely
-                @error "Casting complex eigen-values to real numbers" u
-                u = real.(u)
-            end
-            for i ∈ findall(u .< 0) # occurs very rarely
-                @error "Negating negative eigen-values" u
-                u[i] = -u[i]
-                U[:,i] = -U[:,i]
+            if any(isa.(u, Complex)) || any(u .< 0) # occurs extremely rarely
+                @warn "Assuming convergence from eigen-values that are not positive and real" u
+                p_est = max.(0, p_est) # map to probabilities
+                return p_est ./ sum(p_est)
             end
             D = Matrix(Diagonal(u .^ (-1/2))) # D^(-1/2)
 
