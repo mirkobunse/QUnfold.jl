@@ -70,7 +70,7 @@ function main(output_path::String="results/crab_spectrum.pdf")
 
     @info "Quantifying..."
     n_bins = 120
-    τ_exponent = 0 # -3
+    τ_exponent = -3 # -3
     method = QUnfold.fit(HDx(
             floor(Int, n_bins / n_features);
             strategy = :softmax,

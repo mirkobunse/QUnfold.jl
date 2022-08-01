@@ -96,26 +96,15 @@ predict(m::FittedMethod, X::Any) =
     _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1))
 
 """
-    predict_with_background(m, X_q, X_b, α=1) -> Vector{Float64}
+    predict_with_background(m, X, X_b, α=1) -> Vector{Float64}
 
-Predict the class prevalences in the observed data set `X_q` with the fitted
+Predict the class prevalences in the observed data set `X` with the fitted
 method `m`, taking into account a background measurement `X_b` that is scaled
 by `α`.
 """
-function predict_with_background(m::FittedMethod, X_q::Any, X_b::Any, α::Float64=1.)
-    b_bar = α .* sum(_transform(m.f, X_b), dims=1)[:]
-    q_bar = sum(_transform(m.f, X_q), dims=1)[:] - b_bar
-    if any(q_bar .< 0)
-        @warn "Replacing $(sum(q_bar .< 0)) negative values from background subtraction with zero" α q_bar
-        q_bar = max.(q_bar, 0)
-    end
-    N = ceil(Int, size(X_q, 1) - α * size(X_b, 1))
-    if N < 0
-        @warn "Replacing negative N from background subtraction with sum(q_bar)" α
-        N = sum(q_bar)
-    end
-    return _solve(m.method, m.M, q_bar ./ N, m.p_trn, N)
-end
+predict_with_background(m::FittedMethod, X::Any, X_b::Any, α::Float64=1.) =
+    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1), α, mean(_transform(m.f, X_b), dims=1)[:])
+    # _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1), α, Float64.(sum(_transform(m.f, X_b), dims=1)[:]))
 
 
 # utility methods
@@ -230,8 +219,8 @@ _transformer(m::HDy) = HistogramTransformer(
             fit_classifier = m.fit_classifier
         )
     )
-_solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
-    solve_hellinger_distance(M, q, N, m.n_bins; τ=m.τ, a=m.a, strategy=m.strategy)
+_solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, α::Float64=0.0, b::Vector{Float64}=zeros(length(q))) =
+    solve_hellinger_distance(M, q, N, m.n_bins, α, b; τ=m.τ, a=m.a, strategy=m.strategy)
 
 
 # IBU and SLD
