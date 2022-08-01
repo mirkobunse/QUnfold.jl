@@ -46,6 +46,10 @@ function __init__()
     PYLOCK[] = ReentrantLock()
 end
 
+acceptance_factors() = 1 ./ A_EFF[]
+bin_centers() = BIN_CENTERS[]
+bin_edges() = BIN_EDGES[]
+
 pylock(f::Function) = Base.lock(f, PYLOCK[]) # thread safety for PyCall
 
 mutable struct CachedClassifier
@@ -197,7 +201,7 @@ end
 Compute the Crab nebula flux in `GeV⋅cm²⋅s` for a vector `x` of energy values
 that are given in `GeV`. This parametrization is by Aleksíc et al. (2015).
 """
-magic_crab_flux(x::Vector{Float64}=BIN_CENTERS[]) =
+magic_crab_flux(x::Union{Float64,Vector{Float64}}=BIN_CENTERS[]) =
     @. 3.23e-10 * (x/1e3)^(-2.47 - 0.24 * log10(x/1e3))
 
 """
@@ -250,8 +254,6 @@ function sample_app_oq(N, m=10000, keep=.2)
     i = sortperm(c)[1:m]
     return app[i]
 end
-
-acceptance_factors() = 1 ./ A_EFF[]
 
 """
     to_log10_spectrum_density(N, p)

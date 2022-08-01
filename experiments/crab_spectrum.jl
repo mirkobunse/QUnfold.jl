@@ -1,68 +1,66 @@
-using CSV, DataFrames, Discretizers, Distributions, Statistics, PGFPlots
+if ".." ∉ LOAD_PATH push!(LOAD_PATH, "..") end # add QUnfold to the LOAD_PATH
+ENV["PYTHONWARNINGS"] = "ignore"
+using
+    ArgParse,
+    CSV,
+    DataFrames,
+    DelimitedFiles,
+    Discretizers,
+    Distributions,
+    LinearAlgebra,
+    Printf,
+    PyCall,
+    PGFPlots,
+    QUnfold,
+    QUnfoldExperiments,
+    Random,
+    Statistics,
+    StatsBase,
+    QuaPy
+import ScikitLearn, ScikitLearnBase
 
-"""
-    magic_crab_flux(x)
-
-Compute the Crab nebula flux in `GeV⋅cm²⋅s` for a vector `x` of energy values
-that are given in `GeV`. This parametrization is by Aleksíc et al. (2015).
-"""
-magic_crab_flux(x) = @. 3.23e-10 * (x/1e3)^(-2.47 - 0.24 * log10(x/1e3))
-
-
-
-# our bins
-df_acceptance = CSV.read("data/fact/acceptance.csv", DataFrame)
-bin_centers = df_acceptance[2:end-1,:bin_center]
-bin_edges = disallowmissing(vcat(df_acceptance[2:end-1,:e_min], df_acceptance[end-1,:e_max]))
-
-# # Bins by Max Nöthe
-#
-# bin_centers = 10 .^ collect(2.8:0.2:4.4)
-# bin_edges = 10 .^ collect(2.7:0.2:4.5)
+RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").RandomForestClassifier
+DecisionTreeClassifier = pyimport_conda("sklearn.tree", "scikit-learn").DecisionTreeClassifier
 
 function plot_histogram(p) # plot a dis-continuous step function
     x = [NaN]
     y = [NaN]
     for i in 1:length(p)
-        push!(x, bin_edges[i], bin_edges[i+1], NaN)
+        push!(x, QUnfoldExperiments.bin_edges()[i], QUnfoldExperiments.bin_edges()[i+1], NaN)
         push!(y, p[i], p[i], NaN)
     end
     return Plots.Linear(x, y; style="mark=none, unbounded coords=jump")
 end
 
-plot_error_bars(y_high, y_low) = # plot bars at bin_edges from y_high to y_low
-    [ Plots.Command("\\draw[|-|] ($x,$h) -- ($x,$l)") for (x, h, l) in zip(bin_centers, y_high, y_low) ]
+plot_error_bars(y_high, y_low) = # plot bars at QUnfoldExperiments.bin_edges() from y_high to y_low
+    [ Plots.Command("\\draw[|-|] ($x,$h) -- ($x,$l)") for (x, h, l) in zip(QUnfoldExperiments.bin_centers(), y_high, y_low) ]
 
 function plot_poisson_sample(N) # add and subtract one Poisson std to obtain error bars
-    y = magic_crab_flux(bin_centers)
-    p = y .* df_acceptance[2:end-1,:a_eff]
+    y = QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())
+    p = y ./ QUnfoldExperiments.acceptance_factors()
     λ = p * N ./ sum(p) # Poisson rates for N events in total
     return plot_error_bars(
-        (λ + sqrt.(λ)) ./ N .* sum(p) ./ df_acceptance[2:end-1,:a_eff], # y_high
-        (λ - sqrt.(λ)) ./ N .* sum(p) ./ df_acceptance[2:end-1,:a_eff] # y_low
+        (λ + sqrt.(λ)) ./ N .* sum(p) .* QUnfoldExperiments.acceptance_factors(), # y_high
+        (λ - sqrt.(λ)) ./ N .* sum(p) .* QUnfoldExperiments.acceptance_factors() # y_low
     )
 end
-
-
 
 # simulated, labeled data
 df = DataFrames.disallowmissing!(CSV.read("data/fact/fact_wobble.csv", DataFrame))
 y = encode(
-    LinearDiscretizer(log10.(bin_edges)),
+    LinearDiscretizer(log10.(QUnfoldExperiments.bin_edges())),
     df[!, :log10_energy]
 )
-p_trn = [ sum(y .== i) / length(y) for i in 1:length(bin_centers) ]
-training_spectrum = p_trn .* sum(magic_crab_flux(bin_centers) .* df_acceptance[2:end-1,:a_eff]) ./ df_acceptance[2:end-1,:a_eff]
-
-
+p_trn = [ sum(y .== i) / length(y) for i in 1:length(QUnfoldExperiments.bin_centers()) ]
+training_spectrum = p_trn .* sum(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers()) ./ QUnfoldExperiments.acceptance_factors()) .* QUnfoldExperiments.acceptance_factors()
 
 function main()
     plot = Axis(
-        Plots.Linear(magic_crab_flux, (10^2.4, 10^4.8)); # magic spectrum
+        Plots.Linear(QUnfoldExperiments.magic_crab_flux, (10^2.4, 10^4.8)); # magic spectrum
         style = "xmode=log, ymode=log, enlarge x limits=.0425, enlarge y limits=.0425"
     )
-    push!(plot, plot_histogram(magic_crab_flux(bin_centers)))
-    # push!(plot, plot_histogram(magic_crab_flux(bin_centers) .* df_acceptance[2:end-1,:a_eff]))
+    push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())))
+    # push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers()) ./ QUnfoldExperiments.acceptance_factors()))
     push!(plot, plot_poisson_sample(5000)...)
     push!(plot, plot_histogram(training_spectrum))
     save("results/crab_spectrum.pdf", plot)
