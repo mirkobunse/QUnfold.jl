@@ -21,6 +21,7 @@ export
     PACC,
     PCC,
     predict,
+    predict_with_background,
     RUN,
     SLD,
     SVD,
@@ -93,6 +94,23 @@ Predict the class prevalences in the data set `X` with the fitted method `m`.
 """
 predict(m::FittedMethod, X::Any) =
     _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1))
+
+"""
+    predict_with_background(m, X_q, X_b, α=1) -> Vector{Float64}
+
+Predict the class prevalences in the observed data set `X_q` with the fitted
+method `m`, taking into account a background measurement `X_b` that is scaled
+by `α`.
+"""
+function predict_with_background(m::FittedMethod, X_q::Any, X_b::Any, α::Float64=1.)
+    b_bar = α .* sum(_transform(m.f, X_b), dims=1)[:]
+    q_bar = sum(_transform(m.f, X_q), dims=1)[:] - b_bar
+    if any(q_bar < 0)
+        @warn "Replacing negative values from background subtraction with zero" α
+        q_bar = max.(q_bar, 0)
+    end
+    return _solve(m.method, m.M, q_bar ./ sum(q_bar), m.p_trn, sum(q_bar))
+end
 
 
 # utility methods
