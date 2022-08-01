@@ -1,0 +1,6 @@
+*
+!.gitignore
+!acceptance.csv
+!generate_acceptance.py
+!generate_crab.jl
+!README.md
