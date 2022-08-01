@@ -105,11 +105,11 @@ by `α`.
 function predict_with_background(m::FittedMethod, X_q::Any, X_b::Any, α::Float64=1.)
     b_bar = α .* sum(_transform(m.f, X_b), dims=1)[:]
     q_bar = sum(_transform(m.f, X_q), dims=1)[:] - b_bar
-    if any(q_bar < 0)
-        @warn "Replacing negative values from background subtraction with zero" α
+    if any(q_bar .< 0)
+        @warn "Replacing $(sum(q_bar .< 0)) negative values from background subtraction with zero" α q_bar
         q_bar = max.(q_bar, 0)
     end
-    N = length(X_q) - α * length(X_b)
+    N = ceil(Int, size(X_q, 1) - α * size(X_b, 1))
     if N < 0
         @warn "Replacing negative N from background subtraction with sum(q_bar)" α
         N = sum(q_bar)

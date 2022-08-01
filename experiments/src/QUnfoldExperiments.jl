@@ -19,6 +19,8 @@ const BIN_EDGES = Ref{Vector{Float64}}()
 const FACT_X = Ref{Matrix{Float32}}()
 const FACT_Y = Ref{Vector{Int32}}()
 const P_TRN = Ref{Vector{Float64}}()
+const CRAB_X = Ref{Matrix{Float32}}()
+const CRAB_IS_ON = Ref{Vector{Bool}}()
 const PYLOCK = Ref{ReentrantLock}()
 
 function __init__()
@@ -42,6 +44,10 @@ function __init__()
         df_data[!, :log10_energy]
     ))
     P_TRN[] = [ sum(FACT_Y[] .== i) / length(FACT_Y[]) for i in 1:length(BIN_CENTERS[]) ]
+
+    df_crab = DataFrames.disallowmissing!(CSV.read("$(fact_dir)/crab.csv", DataFrame))
+    CRAB_X[] = Matrix{Float32}(df_crab[:, setdiff(propertynames(df_data), [:log10_energy])])
+    CRAB_IS_ON[] = Bool.(df_crab[!, :is_on])
 
     PYLOCK[] = ReentrantLock()
 end
@@ -143,6 +149,14 @@ function fact_data(rng::AbstractRNG, N_trn::Int=120000)
     )
 end
 
+"""
+    crab_data() -> (X_q, X_b)
+
+Return the observed data `X_q` and the background measurement `X_b` of FACT's
+open Crab data set.
+"""
+crab_data() = CRAB_X[][CRAB_IS_ON[],:], CRAB_X[][.!(CRAB_IS_ON[]),:]
+
 # a meaningful exception for subsample_indices
 struct ExhaustedClassException <: Exception
     label::Int64 # the label that is exhausted
@@ -199,7 +213,7 @@ end
     magic_crab_flux(x=BIN_CENTERS)
 
 Compute the Crab nebula flux in `GeV⋅cm²⋅s` for a vector `x` of energy values
-that are given in `GeV`. This parametrization is by Aleksíc et al. (2015).
+that are given in `GeV`. This parametrization is by Aleksić et al. (2015).
 """
 magic_crab_flux(x::Union{Float64,Vector{Float64}}=BIN_CENTERS[]) =
     @. 3.23e-10 * (x/1e3)^(-2.47 - 0.24 * log10(x/1e3))
