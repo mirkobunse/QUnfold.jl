@@ -109,7 +109,12 @@ function predict_with_background(m::FittedMethod, X_q::Any, X_b::Any, α::Float6
         @warn "Replacing negative values from background subtraction with zero" α
         q_bar = max.(q_bar, 0)
     end
-    return _solve(m.method, m.M, q_bar ./ sum(q_bar), m.p_trn, sum(q_bar))
+    N = length(X_q) - α * length(X_b)
+    if N < 0
+        @warn "Replacing negative N from background subtraction with sum(q_bar)" α
+        N = sum(q_bar)
+    end
+    return _solve(m.method, m.M, q_bar ./ N, m.p_trn, N)
 end
 
 
