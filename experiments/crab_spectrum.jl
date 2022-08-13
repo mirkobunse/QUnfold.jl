@@ -34,7 +34,7 @@ function plot_histogram(p, legendentry="") # plot a dis-continuous step function
 end
 
 plot_error_bars(y_high, y_low) = # plot bars at QUnfoldExperiments.bin_edges() from y_high to y_low
-    [ Plots.Command("\\draw[|-|] ($x,$h) -- ($x,$l)") for (x, h, l) in zip(QUnfoldExperiments.bin_centers(), y_high, y_low) ]
+    [ Plots.Command("\\draw[|-|] ($x,$h) -- ($x,$l)") for (x, h, l) in zip(QUnfoldExperiments.bin_centers()[2:end-1], y_high, y_low) ]
 
 # function plot_poisson_sample(N) # add and subtract one Poisson std to obtain error bars
 #     y = QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())
@@ -60,34 +60,40 @@ function main(output_path::String="results/crab_spectrum.pdf")
 
     # read the training set, the validation pool, and the testing pool
     X_trn, y_trn, _, _, _, _ = QUnfoldExperiments.fact_data()
-    n_classes = length(unique(y_trn))
     n_features = size(X_trn, 2)
     α = 1/5 # ratio of "on" vs "off" region
     t_obs = 91 # 17.7 # observation time
 
     X_q, X_b = QUnfoldExperiments.crab_data("data/fact/crab_mnoethe.csv")
 
-    # TODO bootstrap the training data
-
-    @info "Quantifying..."
-    n_bins = 120
-    # τ_exponent = 9
-    # method = QUnfold.fit(QUnfold.RUN(
-    #         TreeTransformer(DecisionTreeClassifier(; max_leaf_nodes=n_bins, random_state=rand(UInt32)));
-    #         strategy = :softmax,
-    #         τ = 10.0^τ_exponent,
-    #         a = QUnfoldExperiments.acceptance_factors()
-    #     ), X_trn, y_trn)
-    τ_exponent = -.45
-    method = QUnfold.fit(HDx(
-            floor(Int, n_bins / n_features);
-            strategy = :softmax,
-            τ = 10.0^τ_exponent,
-            a = QUnfoldExperiments.acceptance_factors()
-        ), X_trn, y_trn)
-    p_est = QUnfold.predict_with_background(method, X_q, X_b, α)
-    p_fg = QUnfold.predict(method, X_q)
-    p_bg = QUnfold.predict(method, X_b)
+    # multiple bootstrap iterations
+    n_bootstrap = 100
+    n_classes = length(QUnfoldExperiments.acceptance_factors()[2:end-1])
+    p_est = Array{Float64}(undef, n_bootstrap, n_classes)
+    for i ∈ 1:n_bootstrap
+        @info "Bootstrap $(i)/$(n_bootstrap)"
+        i_trn = rand(1:length(y_trn), length(y_trn)) # bootstrap indices
+        n_bins = 120
+        # τ_exponent = 9
+        # method = QUnfold.fit(QUnfold.RUN(
+        #         TreeTransformer(DecisionTreeClassifier(; max_leaf_nodes=n_bins, random_state=rand(UInt32)));
+        #         strategy = :softmax,
+        #         τ = 10.0^τ_exponent,
+        #         a = QUnfoldExperiments.acceptance_factors()
+        #     ), X_trn[i_trn,:], y_trn[i_trn])
+        τ_exponent = -.5 # -.45
+        method = QUnfold.fit(HDx(
+                floor(Int, n_bins / n_features);
+                strategy = :softmax,
+                τ = 10.0^τ_exponent,
+                a = QUnfoldExperiments.acceptance_factors()
+            ), X_trn[i_trn,:], y_trn[i_trn])
+        p_est[i,:] = QUnfold.predict_with_background(method, X_q, X_b, α)[2:end-1]
+        # p_fg = QUnfold.predict(method, X_q)
+        # p_bg = QUnfold.predict(method, X_b)
+    end
+    p_est = p_est .* reshape(QUnfoldExperiments.acceptance_factors()[2:end-1], (1, n_classes)) # correct all estimates
+    p_est = p_est ./ sum(p_est, dims=2) .* sum(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())[2:end-1]) # normalize to fluxes
 
     plot = Axis(
         Plots.Linear(QUnfoldExperiments.magic_crab_flux, (10^2.4, 10^4.2); legendentry="MAGIC (2015)"); # magic spectrum
@@ -95,9 +101,11 @@ function main(output_path::String="results/crab_spectrum.pdf")
     )
     plot.legendStyle = "at={(1.05,.5)}, anchor=west"
     # push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())[2:end-1], "MAGIC (2015)"))
-    push!(plot, plot_histogram((p_est .* QUnfoldExperiments.acceptance_factors())[2:end-1], "est"))
-    push!(plot, plot_histogram((p_fg .* QUnfoldExperiments.acceptance_factors())[2:end-1], "fg"))
-    push!(plot, plot_histogram((p_bg .* QUnfoldExperiments.acceptance_factors())[2:end-1], "bg"))
+    push!(plot, plot_histogram(mean(p_est; dims=1), "est"))
+    push!(plot, plot_error_bars(maximum(p_est; dims=1), minimum(p_est; dims=1))...)
+    # push!(plot, plot_histogram((p_est .* QUnfoldExperiments.acceptance_factors())[2:end-1], "est"))
+    # push!(plot, plot_histogram((p_fg .* QUnfoldExperiments.acceptance_factors())[2:end-1], "fg"))
+    # push!(plot, plot_histogram((p_bg .* QUnfoldExperiments.acceptance_factors())[2:end-1], "bg"))
     # push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers()) ./ QUnfoldExperiments.acceptance_factors()))
     # push!(plot, plot_poisson_sample(5000)...)
     # push!(plot, plot_histogram(training_spectrum))
