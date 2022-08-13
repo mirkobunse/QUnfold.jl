@@ -23,6 +23,7 @@ RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").Rand
 DecisionTreeClassifier = pyimport_conda("sklearn.tree", "scikit-learn").DecisionTreeClassifier
 
 function plot_histogram(p, legendentry="") # plot a dis-continuous step function
+    p = p ./ sum(p) # normalize to probabilities
     x = [NaN]
     y = [NaN]
     for i in 1:length(p)
@@ -45,14 +46,14 @@ plot_error_bars(y_high, y_low) = # plot bars at QUnfoldExperiments.bin_edges() f
 #     )
 # end
 
-# simulated, labeled data
-df = DataFrames.disallowmissing!(CSV.read("data/fact/fact_training.csv", DataFrame))
-y = encode(
-    LinearDiscretizer(log10.(QUnfoldExperiments.bin_edges())),
-    df[!, :log10_energy]
-)
-p_trn = [ sum(y .== i) / length(y) for i in 1:length(QUnfoldExperiments.bin_centers()) ]
-training_spectrum = p_trn .* sum(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers()) ./ QUnfoldExperiments.acceptance_factors()) .* QUnfoldExperiments.acceptance_factors()
+# # simulated, labeled data
+# df = DataFrames.disallowmissing!(CSV.read("data/fact/fact_training.csv", DataFrame))
+# y = encode(
+#     LinearDiscretizer(log10.(QUnfoldExperiments.bin_edges())),
+#     df[!, :log10_energy]
+# )
+# p_trn = [ sum(y .== i) / length(y) for i in 1:length(QUnfoldExperiments.bin_centers()) ]
+# training_spectrum = p_trn .* sum(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers()) ./ QUnfoldExperiments.acceptance_factors()) .* QUnfoldExperiments.acceptance_factors()
 
 function main(output_path::String="results/crab_spectrum.pdf")
     Random.seed!(876) # make this experiment reproducible
@@ -70,13 +71,14 @@ function main(output_path::String="results/crab_spectrum.pdf")
 
     @info "Quantifying..."
     n_bins = 120
-    τ_exponent = 1
+    # τ_exponent = 9
     # method = QUnfold.fit(QUnfold.RUN(
     #         TreeTransformer(DecisionTreeClassifier(; max_leaf_nodes=n_bins, random_state=rand(UInt32)));
     #         strategy = :softmax,
     #         τ = 10.0^τ_exponent,
     #         a = QUnfoldExperiments.acceptance_factors()
     #     ), X_trn, y_trn)
+    τ_exponent = -.45
     method = QUnfold.fit(HDx(
             floor(Int, n_bins / n_features);
             strategy = :softmax,
@@ -87,15 +89,14 @@ function main(output_path::String="results/crab_spectrum.pdf")
     p_fg = QUnfold.predict(method, X_q)
     p_bg = QUnfold.predict(method, X_b)
 
-    plot = Axis(
-        Plots.Linear(QUnfoldExperiments.magic_crab_flux, (10^2.4, 10^4.8); legendentry="MAGIC (2015)"); # magic spectrum
-        style = "xmode=log, ymode=log, enlarge x limits=.0425, enlarge y limits=.0425, xlabel={\$E / \\mathrm{GeV}\$}, ylabel={\$\\phi / (\\mathrm{GeV}^{-1} \\mathrm{s}^{-1} \\mathrm{m}^{-2})\$}"
+    plot = Axis(;
+        style = "xmode=log, ymode=log, enlarge x limits=.0425, enlarge y limits=.0425, xlabel={\$E / \\mathrm{GeV}\$}, ylabel={\$P(Y)\$}"
     )
     plot.legendStyle = "at={(1.05,.5)}, anchor=west"
-    push!(plot, plot_histogram(p_est ./ (t_obs * 60 * 60 / size(X_q, 1)) .* QUnfoldExperiments.acceptance_factors(), "est"))
-    push!(plot, plot_histogram(p_fg ./ (t_obs * 60 * 60 / size(X_q, 1)) .* QUnfoldExperiments.acceptance_factors(), "fg"))
-    push!(plot, plot_histogram(p_bg ./ (t_obs * 60 * 60 / size(X_q, 1)) .* QUnfoldExperiments.acceptance_factors(), "bg"))
-    # push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())))
+    push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())[2:end-1], "MAGIC (2015)"))
+    push!(plot, plot_histogram((p_est .* QUnfoldExperiments.acceptance_factors())[2:end-1], "est"))
+    push!(plot, plot_histogram((p_fg .* QUnfoldExperiments.acceptance_factors())[2:end-1], "fg"))
+    push!(plot, plot_histogram((p_bg .* QUnfoldExperiments.acceptance_factors())[2:end-1], "bg"))
     # push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers()) ./ QUnfoldExperiments.acceptance_factors()))
     # push!(plot, plot_poisson_sample(5000)...)
     # push!(plot, plot_histogram(training_spectrum))
