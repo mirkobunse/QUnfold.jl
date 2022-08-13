@@ -36,7 +36,7 @@ function __init__()
     # BIN_CENTERS[] = 10 .^ collect(2.8:0.2:4.4)
     # BIN_EDGES[] = 10 .^ collect(2.7:0.2:4.5)
 
-    df_data = DataFrames.disallowmissing!(CSV.read("$(fact_dir)/fact_wobble.csv", DataFrame))
+    df_data = DataFrames.disallowmissing!(CSV.read("$(fact_dir)/fact_training.csv", DataFrame))
     FEATURES[] = setdiff(propertynames(df_data), [:log10_energy])
     FACT_X[] = Matrix{Float32}(df_data[:, FEATURES[]])
     FACT_Y[] = Int32.(encode( # labels of the simulated data

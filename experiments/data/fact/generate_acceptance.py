@@ -11,7 +11,7 @@ from irf.collection_area import collection_area
 @click.argument('gamma_file')
 @click.argument('corsika_file')
 @click.argument('output_file')
-@click.option('--threshold', type=float, default=0.8, help='decision threshold for gamma predictions')
+@click.option('--threshold', type=float, default=0.85, help='decision threshold for gamma predictions')
 @click.option('--theta2_cut', type=float, default=0.025, help='theta2 cut for on/off predictions')
 @click.option('--e_min', type=float, default=10**2.4, help='minimum energy (default: 10^2.4)')
 @click.option('--e_max', type=float, default=10**4.2, help='minimum energy (default: 10^4.2)')
@@ -34,6 +34,7 @@ def main(gamma_file, corsika_file, output_file, threshold, theta2_cut, e_min, e_
     )
 
     bins_true = logspace_binning(e_min * u.GeV, e_max * u.GeV, 1 * u.GeV, n_bins)
+    print(np.log10(bins_true.to_value(u.GeV)))
     a_eff, bin_center, bin_width, a_low, a_high = collection_area(
         corsika_events.total_energy.values,
         gammas['corsika_event_header_total_energy'].values,

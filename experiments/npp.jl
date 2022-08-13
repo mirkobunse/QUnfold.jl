@@ -33,7 +33,7 @@ function plot_histogram(p, legendentry) # plot a dis-continuous step function
 end
 
 # simulated, labeled data
-df = DataFrames.disallowmissing!(CSV.read("data/fact/fact_wobble.csv", DataFrame))
+df = DataFrames.disallowmissing!(CSV.read("data/fact/fact_training.csv", DataFrame))
 y = encode(
     LinearDiscretizer(log10.(QUnfoldExperiments.bin_edges())),
     df[!, :log10_energy]

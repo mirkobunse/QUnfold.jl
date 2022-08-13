@@ -46,7 +46,7 @@ plot_error_bars(y_high, y_low) = # plot bars at QUnfoldExperiments.bin_edges() f
 # end
 
 # simulated, labeled data
-df = DataFrames.disallowmissing!(CSV.read("data/fact/fact_wobble.csv", DataFrame))
+df = DataFrames.disallowmissing!(CSV.read("data/fact/fact_training.csv", DataFrame))
 y = encode(
     LinearDiscretizer(log10.(QUnfoldExperiments.bin_edges())),
     df[!, :log10_energy]
@@ -71,6 +71,12 @@ function main(output_path::String="results/crab_spectrum.pdf")
     @info "Quantifying..."
     n_bins = 120
     τ_exponent = 1
+    # method = QUnfold.fit(QUnfold.RUN(
+    #         TreeTransformer(DecisionTreeClassifier(; max_leaf_nodes=n_bins, random_state=rand(UInt32)));
+    #         strategy = :softmax,
+    #         τ = 10.0^τ_exponent,
+    #         a = QUnfoldExperiments.acceptance_factors()
+    #     ), X_trn, y_trn)
     method = QUnfold.fit(HDx(
             floor(Int, n_bins / n_features);
             strategy = :softmax,
