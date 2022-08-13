@@ -1,4 +1,4 @@
-using CSV, DataFrames, HDF5
+using CSV, DataFrames, HDF5, H5Zblosc
 
 function download_crab()
     dl2_url = "https://factdata.app.tu-dortmund.de/dl2/FACT-Tools/v1.1.2/open_crab_sample_facttools_dl2.hdf5"
