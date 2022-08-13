@@ -23,11 +23,11 @@ RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").Rand
 DecisionTreeClassifier = pyimport_conda("sklearn.tree", "scikit-learn").DecisionTreeClassifier
 
 function plot_histogram(p, legendentry="") # plot a dis-continuous step function
-    p = p ./ sum(p) # normalize to probabilities
+    p = p ./ sum(p) .* sum(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())[2:end-1]) # normalize to flux
     x = [NaN]
     y = [NaN]
     for i in 1:length(p)
-        push!(x, QUnfoldExperiments.bin_edges()[i], QUnfoldExperiments.bin_edges()[i+1], NaN)
+        push!(x, QUnfoldExperiments.bin_edges()[i+1], QUnfoldExperiments.bin_edges()[i+2], NaN)
         push!(y, p[i], p[i], NaN)
     end
     return Plots.Linear(x, y; style="mark=none, unbounded coords=jump", legendentry=legendentry)
@@ -89,11 +89,12 @@ function main(output_path::String="results/crab_spectrum.pdf")
     p_fg = QUnfold.predict(method, X_q)
     p_bg = QUnfold.predict(method, X_b)
 
-    plot = Axis(;
-        style = "xmode=log, ymode=log, enlarge x limits=.0425, enlarge y limits=.0425, xlabel={\$E / \\mathrm{GeV}\$}, ylabel={\$P(Y)\$}"
+    plot = Axis(
+        Plots.Linear(QUnfoldExperiments.magic_crab_flux, (10^2.4, 10^4.2); legendentry="MAGIC (2015)"); # magic spectrum
+        style = "xmode=log, ymode=log, enlarge x limits=.0425, enlarge y limits=.0425, xlabel={\$E / \\mathrm{GeV}\$}, ylabel={\$\\phi / (\\mathrm{GeV}^{-1} \\mathrm{s}^{-1} \\mathrm{m}^{-2})\$}"
     )
     plot.legendStyle = "at={(1.05,.5)}, anchor=west"
-    push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())[2:end-1], "MAGIC (2015)"))
+    # push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())[2:end-1], "MAGIC (2015)"))
     push!(plot, plot_histogram((p_est .* QUnfoldExperiments.acceptance_factors())[2:end-1], "est"))
     push!(plot, plot_histogram((p_fg .* QUnfoldExperiments.acceptance_factors())[2:end-1], "fg"))
     push!(plot, plot_histogram((p_bg .* QUnfoldExperiments.acceptance_factors())[2:end-1], "bg"))
