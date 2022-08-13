@@ -303,8 +303,8 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     N_b = sum(b)
     # @NLexpression(model, ap[i = 1:C], a[i] * p[i] * N / sum(a[j]*p[j] for j in 1:C))
     # @NLexpression(model, Mp[i = 1:F], (sum(M[i, j] * ap[j] for j in 1:C) + α * b[i]) / (N + α * N_b))
-    @NLexpression(model, Mp[i = 1:F], (sum(M[i, j] * p[j] for j in 1:C) + α * b[i]) / (1 + α))
-    @NLexpression(model, squared[i = 1:F], (sqrt(q[i]) - sqrt(Mp[i]))^2)
+    @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * p[j] for j in 1:C))
+    @NLexpression(model, squared[i = 1:F], (sqrt((q[i] + b[i])/2) - sqrt(Mp[i]))^2)
     @NLexpression(model, HD[i = 1:n_features], sqrt(sum((squared[j] for j in indices[i]))))
     if length(a) > 0
         @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))

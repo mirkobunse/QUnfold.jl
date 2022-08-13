@@ -62,9 +62,9 @@ function main(output_path::String="results/crab_spectrum.pdf")
     n_classes = length(unique(y_trn))
     n_features = size(X_trn, 2)
     α = 1/5 # ratio of "on" vs "off" region
-    t_obs = 17.7 # observation time
+    t_obs = 91 # 17.7 # observation time
 
-    X_q, X_b = QUnfoldExperiments.crab_data()
+    X_q, X_b = QUnfoldExperiments.crab_data("data/fact/crab_mnoethe.csv")
 
     # TODO bootstrap the training data
 
@@ -86,9 +86,9 @@ function main(output_path::String="results/crab_spectrum.pdf")
         style = "xmode=log, ymode=log, enlarge x limits=.0425, enlarge y limits=.0425, xlabel={\$E / \\mathrm{GeV}\$}, ylabel={\$\\phi / (\\mathrm{GeV}^{-1} \\mathrm{s}^{-1} \\mathrm{m}^{-2})\$}"
     )
     plot.legendStyle = "at={(1.05,.5)}, anchor=west"
-    push!(plot, plot_histogram(p_est ./ (17.7 * 60 * 60 / size(X_q, 1)) .* QUnfoldExperiments.acceptance_factors(), "est"))
-    push!(plot, plot_histogram(p_fg ./ (17.7 * 60 * 60 / size(X_q, 1)) .* QUnfoldExperiments.acceptance_factors(), "fg"))
-    push!(plot, plot_histogram(p_bg ./ (17.7 * 60 * 60 / size(X_q, 1)) .* QUnfoldExperiments.acceptance_factors(), "bg"))
+    push!(plot, plot_histogram(p_est ./ (t_obs * 60 * 60 / size(X_q, 1)) .* QUnfoldExperiments.acceptance_factors(), "est"))
+    push!(plot, plot_histogram(p_fg ./ (t_obs * 60 * 60 / size(X_q, 1)) .* QUnfoldExperiments.acceptance_factors(), "fg"))
+    push!(plot, plot_histogram(p_bg ./ (t_obs * 60 * 60 / size(X_q, 1)) .* QUnfoldExperiments.acceptance_factors(), "bg"))
     # push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers())))
     # push!(plot, plot_histogram(QUnfoldExperiments.magic_crab_flux(QUnfoldExperiments.bin_centers()) ./ QUnfoldExperiments.acceptance_factors()))
     # push!(plot, plot_poisson_sample(5000)...)
