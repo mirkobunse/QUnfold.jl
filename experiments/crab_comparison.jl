@@ -99,7 +99,7 @@ function main(;
         n_features = size(X_trn, 2)
 
         clf = QUnfoldExperiments.CachedClassifier(
-            RandomForestClassifier(is_test_run ? 24 : 100; oob_score=true, random_state=rand(UInt32), n_jobs=-1)
+            RandomForestClassifier(is_test_run ? 24 : 100; criterion="entropy", oob_score=true, random_state=rand(UInt32), n_jobs=-1)
         )
         @info "Fitting the base classifier to $(length(y_trn)) training items" clf
         ScikitLearn.fit!(clf, X_trn, y_trn)
@@ -114,7 +114,7 @@ function main(;
         end
         for n_bins ∈ [60, 120]
             tree_clf = QUnfoldExperiments.CachedClassifier(
-                DecisionTreeClassifier(; max_leaf_nodes=n_bins, random_state=rand(UInt32));
+                DecisionTreeClassifier(; criterion="entropy", max_leaf_nodes=n_bins, random_state=rand(UInt32));
                 only_apply = true # only store tree.apply(X), do not allow predictions
             )
             t_tree = QUnfold.fit(TreeTransformer(tree_clf), X_trn, y_trn)
