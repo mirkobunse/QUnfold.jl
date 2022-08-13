@@ -103,7 +103,7 @@ method `m`, taking into account a background measurement `X_b` that is scaled
 by `α`.
 """
 predict_with_background(m::FittedMethod, X::Any, X_b::Any, α::Float64=1.) =
-    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1), α, mean(_transform(m.f, X_b), dims=1)[:])
+    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1), (α * size(X_b, 1) / size(X, 1)) .* mean(_transform(m.f, X_b), dims=1)[:])
     # _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1), α, Float64.(sum(_transform(m.f, X_b), dims=1)[:]))
 
 
@@ -219,8 +219,8 @@ _transformer(m::HDy) = HistogramTransformer(
             fit_classifier = m.fit_classifier
         )
     )
-_solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, α::Float64=0.0, b::Vector{Float64}=zeros(length(q))) =
-    solve_hellinger_distance(M, q, N, m.n_bins, α, b; τ=m.τ, a=m.a, strategy=m.strategy)
+_solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q))) =
+    solve_hellinger_distance(M, q, N, m.n_bins, b; τ=m.τ, a=m.a, strategy=m.strategy)
 
 
 # IBU and SLD
