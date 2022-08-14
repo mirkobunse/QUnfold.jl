@@ -18,9 +18,8 @@ import ScikitLearn, ScikitLearnBase
 RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").RandomForestClassifier
 DecisionTreeClassifier = pyimport_conda("sklearn.tree", "scikit-learn").DecisionTreeClassifier
 
-function evaluate_methods(methods, X_pool, y_pool, n_samples, classifiers, best=Dict{Tuple{Int64,String},Vector{String}}())
+function evaluate_methods(N, methods, X_pool, y_pool, n_samples, classifiers, best=Dict{String,Vector{String}}())
     df = DataFrame(; # result storage
-        N = Int[],
         protocol = String[],
         sample_index = Int[],
         method_id = String[],
@@ -28,59 +27,57 @@ function evaluate_methods(methods, X_pool, y_pool, n_samples, classifiers, best=
         nmd = Float64[],
         exception = String[],
     )
-    for N in [1000, 10000] # the numbers of data items in each sample
-        for (protocol, samples) in [
-                "APP-OQ (1\\%)" => QUnfoldExperiments.sample_app_oq(N, n_samples, .01),
-                "NPP (Crab)" => QUnfoldExperiments.sample_npp_crab(N, n_samples),
-                "Poisson" => QUnfoldExperiments.sample_poisson(N, n_samples),
-                ]
-            current_methods = length(best) > 0 ? filter(x -> x[2] ∈ best[(N, protocol)], methods) : methods
+    for (protocol, samples) in [
+            "APP-OQ (1\\%)" => QUnfoldExperiments.sample_app_oq(N, n_samples, .01),
+            "NPP (Crab)" => QUnfoldExperiments.sample_npp_crab(N, n_samples),
+            "Poisson" => QUnfoldExperiments.sample_poisson(N, n_samples),
+            ]
+        current_methods = length(best) > 0 ? filter(x -> x[2] ∈ best[protocol], methods) : methods
 
-            # evaluate all samples and measure the total time needed
-            duration = @elapsed for (sample_index, p_true) in enumerate(samples)
+        # evaluate all samples and measure the total time needed
+        duration = @elapsed for (sample_index, p_true) in enumerate(samples)
 
-                # draw a sample (X_p, y_p) from the pool, according to p_true
-                i_p = QUnfoldExperiments.subsample_indices(N, p_true, y_pool)
-                X_p = X_pool[i_p,:]
-                for clf ∈ classifiers
-                    QUnfoldExperiments._cache!(clf, X_p) # cache predictions
-                end
-
-                outcomes = Array{Vector{Any}}(undef, length(current_methods))
-                Threads.@threads for i_method in 1:length(current_methods)
-                    id, name, method = current_methods[i_method] # un-pack the method tuple
-                    outcome = [ N, protocol, sample_index, id, name ]
-                    try
-                        p_hat = QUnfold.predict(method, X_p)
-                        nmd = QUnfoldExperiments.nmd(
-                            QUnfoldExperiments.to_log10_spectrum_density(N, p_hat),
-                            QUnfoldExperiments.to_log10_spectrum_density(N, p_true)
-                        )
-                        push!(outcome, nmd, "")
-                    catch err
-                        if isa(err, QUnfold.NonOptimalStatusError)
-                            push!(outcome, NaN, string(err.termination_status))
-                        elseif isa(err, SingularException)
-                            push!(outcome, NaN, "SingularException")
-                        else
-                            rethrow()
-                        end
-                    end
-                    outcomes[i_method] = outcome
-                end
-                push!(df, outcomes...)
+            # draw a sample (X_p, y_p) from the pool, according to p_true
+            i_p = QUnfoldExperiments.subsample_indices(N, p_true, y_pool)
+            X_p = X_pool[i_p,:]
+            for clf ∈ classifiers
+                QUnfoldExperiments._cache!(clf, X_p) # cache predictions
             end
-            @info "Evaluated $(n_samples) samples in $(duration) seconds" N protocol length(current_methods)
+
+            outcomes = Array{Vector{Any}}(undef, length(current_methods))
+            Threads.@threads for i_method in 1:length(current_methods)
+                id, name, method = current_methods[i_method] # un-pack the method tuple
+                outcome = [ protocol, sample_index, id, name ]
+                try
+                    p_hat = QUnfold.predict(method, X_p)
+                    nmd = QUnfoldExperiments.nmd(
+                        QUnfoldExperiments.to_log10_spectrum_density(N, p_hat),
+                        QUnfoldExperiments.to_log10_spectrum_density(N, p_true)
+                    )
+                    push!(outcome, nmd, "")
+                catch err
+                    if isa(err, QUnfold.NonOptimalStatusError)
+                        push!(outcome, NaN, string(err.termination_status))
+                    elseif isa(err, SingularException)
+                        push!(outcome, NaN, "SingularException")
+                    else
+                        rethrow()
+                    end
+                end
+                outcomes[i_method] = outcome
+            end
+            push!(df, outcomes...)
         end
+        @info "Evaluated $(length(current_methods)) methods on $(n_samples) samples in $(duration) seconds" N protocol
     end
     return df
 end
 
 function main(;
-        output_path_01k :: String = "results/crab_comparison_01k.tex",
-        output_path_10k :: String = "results/crab_comparison_10k.tex",
-        test_path :: String = "results/crab_comparison_test.csv",
-        validation_path :: String = "results/crab_comparison_validation.csv",
+        table_path :: String = "results/crab_comparison_01k.tex",
+        N :: Int = 1000,
+        test_path :: String = "results/crab_comparison_01k_test.csv",
+        validation_path :: String = "results/crab_comparison_01k_validation.csv",
         read_validation :: Bool = false,
         read_test :: Bool = false,
         is_test_run :: Bool = false
@@ -113,7 +110,7 @@ function main(;
                 ("o-pacc", "o-PACC (softmax, \$\\tau=10^{$(τ_exponent)}\$)", PACC(clf; strategy=:softmax, τ=10.0^τ_exponent, a=QUnfoldExperiments.acceptance_factors(), fit_classifier=false)),
             )
         end
-        for n_bins ∈ [60, 120]
+        for n_bins ∈ (is_test_run ? [60] : [60, 120])
             tree_clf = QUnfoldExperiments.CachedClassifier(
                 DecisionTreeClassifier(; criterion="entropy", max_leaf_nodes=n_bins, random_state=rand(UInt32));
                 only_apply = true # only store tree.apply(X), do not allow predictions
@@ -163,7 +160,7 @@ function main(;
             df[!,:exception] = coalesce.(df[!,:exception], "")
         else
             @info "Validating for hyper-parameter optimization"
-            df = evaluate_methods(methods, X_val, y_val, is_test_run ? 10 : 1000, classifiers)
+            df = evaluate_methods(N, methods, X_val, y_val, is_test_run ? 5 : 1000, classifiers)
 
             # store validation results
             mkpath(dirname(validation_path))
@@ -175,10 +172,10 @@ function main(;
         df_best = combine(
             groupby( # group average NMDs by method_id
                 combine(
-                    groupby(df[df[!,:exception].=="",:], [:N, :protocol, :method_id, :method_name]),
+                    groupby(df[df[!,:exception].=="",:], [:protocol, :method_id, :method_name]),
                     :nmd => DataFrames.mean => :nmd
                 ), # average NMDs
-                [:N, :protocol, :method_id]
+                [:protocol, :method_id]
             ),
             sdf -> begin
                 sdf2 = sdf[.!(ismissing.(sdf[!,:nmd])),:]
@@ -197,12 +194,12 @@ function main(;
         end
         methods = vcat(methods, new_methods)
         best = Dict(
-            (N, protocol) => vcat(sdf[:,:method_name], [x[2] for x ∈ new_methods])
-            for ((N, protocol), sdf) ∈ pairs(groupby(df_best, [:N, :protocol]))
+            protocol => vcat(sdf[:,:method_name], [x[2] for x ∈ new_methods])
+            for ((protocol,), sdf) ∈ pairs(groupby(df_best, :protocol))
         )
 
         @info "Final testing"
-        df = evaluate_methods(methods, X_tst, y_tst, is_test_run ? 10 : 1000, classifiers, best)
+        df = evaluate_methods(N, methods, X_tst, y_tst, is_test_run ? 5 : 1000, classifiers, best)
 
         # aggregate and store testing results
         mkpath(dirname(test_path))
@@ -212,7 +209,7 @@ function main(;
 
     # aggregation and export
     df = combine( # average NMDs
-        groupby(df[df[!,:exception].=="",:], [:N, :protocol, :method_id, :method_name]),
+        groupby(df[df[!,:exception].=="",:], [:protocol, :method_id, :method_name]),
         :nmd => DataFrames.mean => :nmd,
         :nmd => DataFrames.std => :std
     )
@@ -240,20 +237,18 @@ function main(;
             ), x, y)
         for (x, y) ∈ zip(df[!,:method_id], df[!,:method_name])
     ]
-    for (N, path_N) in [ (1000, output_path_01k), (10000, output_path_10k) ]
-        df_N = sort( # long to wide format, sorted by method name
-            unstack(df[df[!,:N] .== N, [:method, :protocol, :value]], :method, :protocol, :value),
-            :method
-        )
-        df_N[!,:method] = [ x[4:end] for x ∈ df_N[!,:method] ] # remove leading number
-        for c ∈ propertynames(df_N)[2:end]
-            nmd = [ parse(Float64, "0" * m[1]) for m ∈ match.(r"\$(.\d+)\\pm(.\d+)\$", df_N[!,c]) ]
-            i = findall(nmd .== minimum(nmd)) # indices of all minimum average NMDs
-            df_N[i, c] = "\$\\mathbf{" .* [ x[2:end-1] for x ∈ df_N[i, c] ] .* "}\$"
-        end
-        QUnfoldExperiments.export_table(path_N, df_N)
-        @info "LaTeX table written to $(path_N)"
+    df = sort( # long to wide format, sorted by method name
+        unstack(df[:, [:method, :protocol, :value]], :method, :protocol, :value),
+        :method
+    )
+    df[!,:method] = [ x[4:end] for x ∈ df[!,:method] ] # remove leading number
+    for c ∈ propertynames(df)[2:end] # bold font for winning methods
+        nmd = [ parse(Float64, "0" * m[1]) for m ∈ match.(r"\$(.\d+)\\pm(.\d+)\$", df[!,c]) ]
+        i = findall(nmd .== minimum(nmd)) # indices of all minimum average NMDs
+        df[i, c] = "\$\\mathbf{" .* [ x[2:end-1] for x ∈ df[i, c] ] .* "}\$"
     end
+    QUnfoldExperiments.export_table(table_path, df)
+    @info "LaTeX table written to $(table_path)"
     return df
 end
 
@@ -270,17 +265,18 @@ function parse_commandline()
         "--is_test_run", "-t"
             help = "whether this run is shortened for testing purposes"
             action = :store_true
+        "--N"
+            help = "the number of items per sample, e.g., N=1000 or N=10000"
+            arg_type = Int
+            required = true
         "--test_path"
             help = "the output path of the test results"
-            default = "results/crab_comparison_test.csv"
+            required = true
         "--validation_path"
             help = "the output path of the validation results"
-            default = "results/crab_comparison_validation.csv"
-        "output_path_01k"
-            help = "the output path of the N=1000 LaTeX table"
             required = true
-        "output_path_10k"
-            help = "the output path of the N=10000 LaTeX table"
+        "table_path"
+            help = "the output path of the LaTeX table"
             required = true
     end
     return parse_args(s; as_symbols=true)
