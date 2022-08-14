@@ -33,6 +33,6 @@ Get the training samples and extract a CSV from it.
 ```
 rsync --info=progress2 --human-readable phobos:/net/big-tank/POOL/users/mnoethe/phd_thesis/build/apa85/gamma_train.hdf5 .
 
-julia --project=../.. -e 'include("generate_training.jl"); process_training()'
+julia --project=../.. -e 'include("generate_csv.jl"); generate_csv()'
 ```
 
