@@ -30,7 +30,14 @@ venv/bin/python generate_acceptance.py gamma_test_dl3.hdf5 gamma_headers_corsika
 
 You can get a `gamma_test_dl3.hdf5` from the open Crab sample analysis: https://github.com/fact-project/open_crab_sample_analysis
 
-You will also need a `gamma_train.hdf5`, which is also provided by this analysis.
+You will also need a `gamma_train.hdf5` and a `gamma_test.hdf5`, which are also provided by this analysis.
+
+```
+export OPEN_CRAB_SAMPLE_ANALYSIS="path/to/open_crab_sample_analysis/build"
+ln -s ${OPEN_CRAB_SAMPLE_ANALYSIS}/gamma_test_dl3.hdf5 .
+ln -s ${OPEN_CRAB_SAMPLE_ANALYSIS}/gamma_train.hdf5 .
+ln -s ${OPEN_CRAB_SAMPLE_ANALYSIS}/gamma_test.hdf5 .
+```
 
 ## Data source, variant B: closed data of Max Nöthe's PhD thesis
 
@@ -40,4 +47,6 @@ You can get another `gamma_test_dl3.hdf5` and `gamma_train.hdf5` from Max Nöthe
 rsync --info=progress2 --human-readable phobos:/net/big-tank/POOL/users/mnoethe/phd_thesis/build/apa85/gamma_test_dl3.hdf5 gamma_test_dl3_mnoethe.hdf5
 
 rsync --info=progress2 --human-readable phobos:/net/big-tank/POOL/users/mnoethe/phd_thesis/build/apa85/gamma_train.hdf5 gamma_train_mnoethe.hdf5
+
+rsync --info=progress2 --human-readable phobos:/net/big-tank/POOL/users/mnoethe/phd_thesis/build/apa85/gamma_test.hdf5 gamma_test_mnoethe.hdf5
 ```
