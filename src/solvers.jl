@@ -319,8 +319,27 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     )
 
     # solve and return
-    optimize!(model)
-    _check_termination_status(model, :hellinger_distance, strategy)
+    i_trial = 1
+    while true
+        optimize!(model)
+        if termination_status(model) == INVALID_MODEL && i_trial < 10
+            if strategy == :softmax
+                set_start_value.(l, rand(C) .* 2 .- 1)
+            elseif strategy == :constrained
+                p_0 = rand(C)
+                set_start_value.(p, p_0 ./ sum(p_0))
+            end
+            i_trial += 1
+        else
+            break
+        end
+    end
+    if i_trial > 1
+        @debug "hellinger_distance is valid in trial $(i_trial)"
+    end
+    if termination_status(model) != INVALID_MODEL
+        _check_termination_status(model, :hellinger_distance, strategy)
+    end # otherwise, just return an INVALID_MODEL result
     if strategy == :softmax
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
     elseif strategy == :constrained
