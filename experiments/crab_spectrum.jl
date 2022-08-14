@@ -59,7 +59,8 @@ function main(output_path::String="results/crab_spectrum.pdf")
     Random.seed!(876) # make this experiment reproducible
 
     # read the training set, the validation pool, and the testing pool
-    X_trn, y_trn, _, _, _, _ = QUnfoldExperiments.fact_data()
+    X_trn = QUnfoldExperiments.FACT_X[]
+    y_trn = QUnfoldExperiments.FACT_Y[]
     n_features = size(X_trn, 2)
     α = 1/5 # ratio of "on" vs "off" region
     t_obs = 91 # 17.7 # observation time
@@ -72,7 +73,7 @@ function main(output_path::String="results/crab_spectrum.pdf")
     p_est = Array{Float64}(undef, n_bootstrap, n_classes)
     for i ∈ 1:n_bootstrap
         @info "Bootstrap $(i)/$(n_bootstrap)"
-        i_trn = rand(1:length(y_trn), length(y_trn)) # bootstrap indices
+        i_trn = rand(1:length(y_trn), 120000) # bootstrap indices
         n_bins = 120
         # τ_exponent = 9
         # method = QUnfold.fit(QUnfold.RUN(
