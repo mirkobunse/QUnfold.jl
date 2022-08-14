@@ -95,6 +95,7 @@ function main(;
     else
         # read the training set, the validation pool, and the testing pool
         X_trn, y_trn, X_val, y_val, X_tst, y_tst = QUnfoldExperiments.fact_data()
+        @info "Read $(length(y_val)) validation and $(length(y_tst)) test items"
         n_classes = length(unique(y_trn))
         n_features = size(X_trn, 2)
 

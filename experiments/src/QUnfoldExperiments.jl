@@ -5,6 +5,8 @@ using
     DataFrames,
     Discretizers,
     Distributions,
+    HDF5,
+    H5Zblosc,
     LinearAlgebra,
     QUnfold,
     Random,
@@ -13,16 +15,21 @@ using
     Printf
 import ScikitLearnBase
 
+const PYLOCK = Ref{ReentrantLock}()
 const A_EFF = Ref{Vector{Float64}}()
 const BIN_CENTERS = Ref{Vector{Float64}}()
 const BIN_EDGES = Ref{Vector{Float64}}()
 const FEATURES = Ref{Vector{Symbol}}()
-const FACT_X = Ref{Matrix{Float32}}()
-const FACT_Y = Ref{Vector{Int32}}()
+const FACT_X_TRN = Ref{Matrix{Float32}}()
+const FACT_Y_TRN = Ref{Vector{Int32}}()
+const FACT_X_REM = Ref{Matrix{Float32}}()
+const FACT_Y_REM = Ref{Vector{Int32}}()
 const P_TRN = Ref{Vector{Float64}}()
-const PYLOCK = Ref{ReentrantLock}()
 
 function __init__()
+    PYLOCK[] = ReentrantLock()
+
+    # read acceptance factors
     fact_dir = "$(dirname(@__DIR__))/data/fact"
     df_acceptance = CSV.read("$(fact_dir)/acceptance.csv", DataFrame)
     A_EFF[] = df_acceptance[2:end-1, :a_eff]
@@ -31,20 +38,77 @@ function __init__()
         df_acceptance[2:end-1,:e_min],
         df_acceptance[end-1,:e_max]
     ))
+    ld = LinearDiscretizer(log10.(BIN_EDGES[]))
 
-    # # Bins by Max Nöthe
+    # # alternative: bins by Max Nöthe
     # BIN_CENTERS[] = 10 .^ collect(2.8:0.2:4.4)
     # BIN_EDGES[] = 10 .^ collect(2.7:0.2:4.5)
 
-    df_data = DataFrames.disallowmissing!(CSV.read("$(fact_dir)/fact_training.csv", DataFrame))
-    FEATURES[] = setdiff(propertynames(df_data), [:log10_energy])
-    FACT_X[] = Matrix{Float32}(df_data[:, FEATURES[]])
-    FACT_Y[] = Int32.(encode( # labels of the simulated data
-        LinearDiscretizer(log10.(BIN_EDGES[])),
-        df_data[!, :log10_energy]
-    ))
-    P_TRN[] = [ sum(FACT_Y[] .== i) / length(FACT_Y[]) for i in 1:length(BIN_CENTERS[]) ]
-    PYLOCK[] = ReentrantLock()
+    # read training data
+    df_trn = read_gamma("$(fact_dir)/gamma_train.hdf5")
+    FEATURES[] = setdiff(propertynames(df_trn), [:log10_energy])
+    FACT_X_TRN[] = Matrix{Float32}(df_trn[:, FEATURES[]])
+    FACT_Y_TRN[] = Int32.(encode(ld, df_trn[!, :log10_energy]))
+    P_TRN[] = [ sum(FACT_Y_TRN[] .== i) / length(FACT_Y_TRN[]) for i in 1:length(BIN_CENTERS[]) ]
+
+    # read remaining test and validation data
+    df_tst = read_gamma("$(fact_dir)/gamma_test.hdf5")
+    FACT_X_REM[] = Matrix{Float32}(df_tst[:, FEATURES[]])
+    FACT_Y_REM[] = Int32.(encode(ld, df_tst[!, :log10_energy]))
+end
+
+# read a DataFrame from a DL2 HDF5 file of simulated gammas
+function read_gamma(path::AbstractString)
+    df = DataFrame()
+
+    # read each HDF5 groups that astro-particle physicists read according to
+    # https://github.com/fact-project/open_crab_sample_analysis/blob/f40c4fab57a90ee589ec98f5fe3fdf38e93958bf/configs/aict.yaml#L30
+    features = [
+        :size,
+        :width,
+        :length,
+        :skewness_trans,
+        :skewness_long,
+        :concentration_cog,
+        :concentration_core,
+        :concentration_one_pixel,
+        :concentration_two_pixel,
+        :leakage1,
+        :leakage2,
+        :num_islands,
+        :num_pixel_in_shower,
+        :photoncharge_shower_mean,
+        :photoncharge_shower_variance,
+        :photoncharge_shower_max,
+    ]
+    @info "Reading $(path)"
+    h5open(path, "r") do file
+        for f in [
+                :corsika_event_header_total_energy, # the target variable
+                :cog_x, # needed only for feature generation; will be removed
+                :cog_y,
+                features...,
+                ]
+            df[!, f] = read(file, "events/$(f)")
+        end
+    end
+
+    # generate additional features, according to
+    # https://github.com/fact-project/open_crab_sample_analysis/blob/f40c4fab57a90ee589ec98f5fe3fdf38e93958bf/configs/aict.yaml#L50
+    df[!, :log_size] = log.(df[!, :size])
+    df[!, :area] = df[!, :width] .* df[!, :length] .* π
+    df[!, :size_area] = df[!, :size] ./ df[!, :area]
+    df[!, :cog_r] = sqrt.(df[!, :cog_x].^2 + df[!, :cog_y].^2)
+
+    # the label needs to be transformed for log10 plots
+    df[!, :log10_energy] = log10.(df[!, :corsika_event_header_total_energy])
+
+    # convert the features to Float32, to find non-finite elements
+    df = df[!, [:log10_energy, :log_size, :area, :size_area, :cog_r, features...]]
+    for column in names(df)
+        df[!, column] = convert.(Float32, df[!, column])
+    end
+    return filter(row -> all([ isfinite(cell) for cell in row ]), df)
 end
 
 acceptance_factors() = 1 ./ A_EFF[]
@@ -133,14 +197,15 @@ and a testing pool `(X_tst, y_tst)` of the FACT data.
 """
 fact_data(N_trn::Int=120000) = fact_data(Random.GLOBAL_RNG, N_trn)
 function fact_data(rng::AbstractRNG, N_trn::Int=120000)
-    i = randperm(length(FACT_Y[]))
-    i_trn, i = i[1:N_trn], i[(N_trn+1):end] # split into training and remaining indices
-    N_val = floor(Int, length(i) / 2) # number of validation samples
-    i_val, i_tst = i[1:N_val], i[(N_val+1):end] # split into validation and testing indices
+    i_trn = randperm(length(FACT_Y_TRN[]))[1:N_trn]
+    i_rem = randperm(length(FACT_Y_REM[]))
+    N_val = floor(Int, length(i_rem) / 2) # number of validation samples
+    i_val = i_rem[1:N_val]
+    i_tst = i_rem[(N_val+1):end]
     return (
-        FACT_X[][i_trn,:], FACT_Y[][i_trn], # training set (X_trn, y_trn)
-        FACT_X[][i_val,:], FACT_Y[][i_val], # validation pool (X_val, y_val)
-        FACT_X[][i_tst,:], FACT_Y[][i_tst], # testing pool (X_tst, y_tst)
+        FACT_X_TRN[][i_trn,:], FACT_Y_TRN[][i_trn], # training set (X_trn, y_trn)
+        FACT_X_REM[][i_val,:], FACT_Y_REM[][i_val], # validation pool (X_val, y_val)
+        FACT_X_REM[][i_tst,:], FACT_Y_REM[][i_tst], # testing pool (X_tst, y_tst)
     )
 end
 

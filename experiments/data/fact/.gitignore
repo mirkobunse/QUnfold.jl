@@ -2,7 +2,6 @@
 !.gitignore
 !acceptance.csv
 !acceptance_mnoethe.csv
-!generate_csv.jl
 !generate_acceptance.py
 !generate_crab.jl
 !README.md
