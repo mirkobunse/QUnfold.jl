@@ -245,9 +245,10 @@ function main(;
     for c ∈ propertynames(df)[2:end] # bold font for winning methods
         nmd = [ parse(Float64, "0" * m[1]) for m ∈ match.(r"\$(.\d+)\\pm(.\d+)\$", df[!,c]) ]
         i = findall(nmd .== minimum(nmd)) # indices of all minimum average NMDs
+        # TODO add all within 1 stddev
         df[i, c] = "\$\\mathbf{" .* [ x[2:end-1] for x ∈ df[i, c] ] .* "}\$"
     end
-    QUnfoldExperiments.export_table(table_path, df)
+    QUnfoldExperiments.export_table(table_path, df, "lccc")
     @info "LaTeX table written to $(table_path)"
     return df
 end

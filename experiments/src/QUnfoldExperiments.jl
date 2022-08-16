@@ -391,16 +391,17 @@ end
 format_statistics(x) = [ @sprintf("%.5f", x)[2:end] for x ∈ quantile(x, [.05, .25, .5, .75, .95]) ]
 
 # TeX table export
-export_table(output_path, df) = open(output_path, "w") do io
-    println(io, "\\begin{tabular}{ll$(repeat("r", size(df, 2)-2))}")
-    println(io, "  \\toprule")
-    println(io, "    ", join(names(df), " & "), " \\\\") # header
-    println(io, "  \\midrule")
-    for r in eachrow(df)
-        println(io, "    ", join(r, " & "), " \\\\")
+export_table(output_path, df, columns="ll$(repeat("r", size(df, 2) - 2))") =
+    open(output_path, "w") do io
+        println(io, "\\begin{tabular}{$(columns)}")
+        println(io, "  \\toprule")
+        println(io, "    ", join(names(df), " & "), " \\\\") # header
+        println(io, "  \\midrule")
+        for r in eachrow(df)
+            println(io, "    ", join(r, " & "), " \\\\")
+        end
+        println(io, "  \\bottomrule")
+        println(io, "\\end{tabular}")
     end
-    println(io, "  \\bottomrule")
-    println(io, "\\end{tabular}")
-end
 
 end # module
