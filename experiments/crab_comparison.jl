@@ -243,10 +243,13 @@ function main(;
     )
     df[!,:method] = [ x[4:end] for x ∈ df[!,:method] ] # remove leading number
     for c ∈ propertynames(df)[2:end] # bold font for winning methods
-        nmd = [ parse(Float64, "0" * m[1]) for m ∈ match.(r"\$(.\d+)\\pm(.\d+)\$", df[!,c]) ]
-        i = findall(nmd .== minimum(nmd)) # indices of all minimum average NMDs
-        # TODO add all within 1 stddev
-        df[i, c] = "\$\\mathbf{" .* [ x[2:end-1] for x ∈ df[i, c] ] .* "}\$"
+        matches = match.(r"\$(.\d+)\\pm(.\d+)\$", df[!,c])
+        nmd = [ parse(Float64, "0" * m[1]) for m ∈ matches ]
+        std_dev = [ parse(Float64, "0" * m[2]) for m ∈ matches ]
+        i_min = findall(nmd .== minimum(nmd)) # indices of all minimum average NMDs
+        i = findall(nmd .> minimum(nmd) + maximum(std_dev[i_min])) # indices of losing methods
+        df[i_min, c] = "\$\\mathbf{" .* [ x[2:end-1] for x ∈ df[i_min, c] ] .* "}\$"
+        df[i, c] = "\\textcolor{gray}{" .* df[i, c] .* "}"
     end
     QUnfoldExperiments.export_table(table_path, df, "lccc")
     @info "LaTeX table written to $(table_path)"
