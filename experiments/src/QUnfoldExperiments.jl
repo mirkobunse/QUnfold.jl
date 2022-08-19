@@ -388,7 +388,7 @@ function mdpa(a::AbstractVector{T}, b::AbstractVector{T}) where T<:Number
 end
 
 # format statistics of curvatures and divergences
-format_statistics(x) = [ @sprintf("%.5f", x)[2:end] for x ∈ quantile(x, [.05, .25, .5, .75, .95]) ]
+format_statistics(x) = [ @sprintf("%.5f", x_i)[2:end] for x_i ∈ vcat(quantile(x, [.05, .25, .5, .75, .95]), mean(x)) ]
 
 # TeX table export
 export_table(output_path, df, columns="ll$(repeat("r", size(df, 2) - 2))") =

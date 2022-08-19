@@ -1,6 +1,6 @@
 _JULIA=julia --project=. --threads=auto
 
-experiments: results/crab_comparison_01k.tex results/crab_comparison_10k.tex
+experiments: results/crab_comparison_01k.tex results/crab_comparison_10k.tex results/crab_protocols_nmd.tex
 results/crab_comparison_01k.tex: crab_comparison.jl
 	$(_JULIA) $< --test_path results/crab_comparison_01k_test.csv --validation_path results/crab_comparison_01k_validation.csv --N 1000 $@
 results/crab_comparison_10k.tex: crab_comparison.jl
