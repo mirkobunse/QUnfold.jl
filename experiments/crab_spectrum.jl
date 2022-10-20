@@ -78,14 +78,14 @@ function main(output_path::String="results/crab_spectrum.pdf")
         # τ_exponent = 9
         # method = QUnfold.fit(QUnfold.RUN(
         #         TreeTransformer(DecisionTreeClassifier(; max_leaf_nodes=n_bins, random_state=rand(UInt32)));
-        #         strategy = :softmax,
+        #         strategy = :softmax_reg,
         #         τ = 10.0^τ_exponent,
         #         a = QUnfoldExperiments.acceptance_factors()
         #     ), X_trn[i_trn,:], y_trn[i_trn])
         τ_exponent = -.5 # -.45
         method = QUnfold.fit(HDx(
                 floor(Int, n_bins / n_features);
-                strategy = :softmax,
+                strategy = :softmax_reg,
                 τ = 10.0^τ_exponent,
                 a = QUnfoldExperiments.acceptance_factors()
             ), X_trn[i_trn,:], y_trn[i_trn])
