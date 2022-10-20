@@ -188,14 +188,16 @@ function main(;
         for (method_name, method) ∈ [ # fit all methods
                 "EMQ (QuaPy)" => QuaPyEMQ(c; fit_classifier=false), # QuaPy methods for reference
                 "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
-                "ACC (softmax)" => ACC(c; strategy=:softmax_reg, fit_classifier=false),
+                "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
+                "ACC (softmax reg.)" => ACC(c; strategy=:softmax_reg, fit_classifier=false),
                 "ACC (pinv)" => ACC(c; strategy=:pinv, fit_classifier=false),
                 "ACC (inv)" => ACC(c; strategy=:inv, fit_classifier=false),
                 "ACC (QuaPy)" => QuaPyACC(c; fit_classifier=false),
                 "ACC (ovr)" => ACC(c; strategy=:ovr, fit_classifier=false),
                 "CC" => CC(c; fit_classifier=false),
                 "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
-                "PACC (softmax)" => PACC(c; strategy=:softmax_reg, fit_classifier=false),
+                "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
+                "PACC (softmax reg.)" => PACC(c; strategy=:softmax_reg, fit_classifier=false),
                 "PACC (pinv)" => PACC(c; strategy=:pinv, fit_classifier=false),
                 "PACC (inv)" => PACC(c; strategy=:inv, fit_classifier=false),
                 "PACC (QuaPy)" => QuaPyPACC(c; fit_classifier=false),
