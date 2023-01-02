@@ -120,7 +120,7 @@ end
 
 struct _ACC <: AbstractMethod
     classifier::Any
-    strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :pinv, :inv, :ovr, :none}
+    strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg, :pinv, :inv, :ovr, :none}
     is_probabilistic::Bool
     τ::Float64 # regularization strength for o-ACC and o-PACC
     a::Vector{Float64} # acceptance factors for regularization
@@ -142,7 +142,7 @@ _transformer(m::_ACC) = ClassTransformer(
     )
 
 _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
-    if m.strategy ∈ [:constrained, :softmax, :softmax_reg]
+    if m.strategy ∈ [:constrained, :softmax, :softmax_reg, :softmax_full_reg]
         solve_least_squares(M, q, N; τ=m.τ, a=m.a, strategy=m.strategy)
     elseif m.strategy == :pinv
         clip_and_normalize(pinv(M) * q)
@@ -168,7 +168,7 @@ struct _RUN_SVD <: AbstractMethod
     τ::Float64 # regularization strength
     n_df::Int # alternative regularization strength
     a::Vector{Float64} # acceptance factors for regularization
-    strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :unconstrained}
+    strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg, :unconstrained}
 end
 RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:constrained) =
     _RUN_SVD(transformer, :run, τ, n_df, a, strategy)
@@ -197,7 +197,7 @@ struct HDx <: AbstractMethod
     n_bins::Int
     τ::Float64 # regularization strength
     a::Vector{Float64} # acceptance factors for regularization
-    strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg}
+    strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg}
     HDx(n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:constrained) = new(n_bins, τ, a, strategy)
 end
 struct HDy <: AbstractMethod
@@ -205,7 +205,7 @@ struct HDy <: AbstractMethod
     n_bins::Int
     τ::Float64 # regularization strength
     a::Vector{Float64} # acceptance factors for regularization
-    strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg}
+    strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg}
     fit_classifier::Bool
     HDy(classifier::Any, n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:constrained, fit_classifier::Bool=true) =
         new(classifier, n_bins, τ, a, strategy, fit_classifier)

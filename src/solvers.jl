@@ -66,7 +66,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
     )[2:(C-1), :]
 
     # least squares ||q - M*p||_2^2
-    if strategy == :softmax
+    if strategy in [:softmax, :softmax_reg]
         @variable(model, l[1:(C-1)]) # latent variables (unconstrained), where l[C] = 0
         p = Vector{NonlinearExpression}(undef, C) # p = softmax(l)-1)
         for i in 1:(C-1)
@@ -79,11 +79,19 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
             @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
         end
         @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
-        @NLobjective(model, Min,
-            sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
-            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
-        )
-    elseif strategy == :softmax_reg
+        if strategy == :softmax
+            @NLobjective(model, Min,
+                sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
+                + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+            )
+        else
+            @NLobjective(model, Min,
+                sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F)
+                + τ/2 * sum(Tp[i]^2 for i in 1:(C-2))
+                + λ * sum(l[j]^2 for j in 1:(C-1)) # soft-max regularization
+            )
+        end
+    elseif strategy == :softmax_full_reg
         @variable(model, l[1:C]) # latent variables (unconstrained) with regularization
         @NLexpression(model, p[i = 1:C], exp(l[i]) / sum(exp(l[j]) for j in 1:C)) # p = softmax(l)
         if length(a) > 0
@@ -121,10 +129,10 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
     # solve and return
     optimize!(model)
     _check_termination_status(model, :least_squares, strategy)
-    if strategy == :softmax
+    if strategy in [:softmax, :softmax_reg]
         exp_l = vcat(exp.(value.(l)), 1)
         return exp_l ./ sum(exp_l)
-    elseif strategy == :softmax_reg
+    elseif strategy == :softmax_full_reg
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
     elseif strategy == :constrained
         return value.(p)
@@ -217,15 +225,19 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     # set up the solution vector p
     model = Model(Ipopt.Optimizer)
     set_silent(model)
-    if strategy == :softmax
+    if strategy in [:softmax, :softmax_reg]
         @variable(model, l[1:(C-1)]) # latent variables (unconstrained), where l[C] = 0
         p = Vector{NonlinearExpression}(undef, C) # p = softmax(l)
         for i in 1:(C-1)
             p[i] = @NLexpression(model, exp(l[i]) / (1 + sum(exp(l[j]) for j in 1:(C-1))))
         end
         p[C] = @NLexpression(model, 1 / (1 + sum(exp(l[j]) for j in 1:(C-1)))) # exp(0) = 1 for l[C] = 0
-        @NLexpression(model, softmax_regularizer, 0.0) # do not use soft-max regularization
-    elseif strategy == :softmax_reg
+        if strategy == :softmax
+            @NLexpression(model, softmax_regularizer, 0.0) # no soft-max regularization
+        else
+            @NLexpression(model, softmax_regularizer, λ * sum(l[j]^2 for j in 1:(C-1)))
+        end
+    elseif strategy == :softmax_full_reg
         @variable(model, l[1:C]) # latent variables (unconstrained) with regularization
         @NLexpression(model, p[i = 1:C], exp(l[i]) / sum(exp(l[j]) for j in 1:C)) # p = softmax(l)
         @NLexpression(model, softmax_regularizer, λ * sum(l[j]^2 for j in 1:C))
@@ -257,10 +269,10 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     # solve and return
     optimize!(model)
     _check_termination_status(model, :maximum_likelihood, strategy)
-    if strategy == :softmax
+    if strategy in [:softmax, :softmax_reg]
         exp_l = vcat(exp.(value.(l)), 1)
         return exp_l ./ sum(exp_l)
-    elseif strategy == :softmax_reg
+    elseif strategy == :softmax_full_reg
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
     elseif strategy ∈ [:constrained, :unconstrained]
         return value.(p)
@@ -319,15 +331,19 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     )[2:(C-1), :]
 
     # set up the solution vector p
-    if strategy == :softmax
+    if strategy in [:softmax, :softmax_reg]
         @variable(model, l[1:(C-1)]) # latent variables (unconstrained), where l[C] = 0
         p = Vector{NonlinearExpression}(undef, C) # p = softmax(l)
         for i in 1:(C-1)
             p[i] = @NLexpression(model, exp(l[i]) / (1 + sum(exp(l[j]) for j in 1:(C-1))))
         end
         p[C] = @NLexpression(model, 1 / (1 + sum(exp(l[j]) for j in 1:(C-1)))) # exp(0) = 1 for l[C] = 0
-        @NLexpression(model, softmax_regularizer, 0.0) # do not use soft-max regularization
-    elseif strategy == :softmax_reg
+        if strategy == :softmax
+            @NLexpression(model, softmax_regularizer, 0.0) # no soft-max regularization
+        else
+            @NLexpression(model, softmax_regularizer, λ * sum(l[j]^2 for j in 1:(C-1)))
+        end
+    elseif strategy == :softmax_full_reg
         @variable(model, l[1:C]) # latent variables (unconstrained) with regularization
         @NLexpression(model, p[i = 1:C], exp(l[i]) / sum(exp(l[j]) for j in 1:C)) # p = softmax(l)
         @NLexpression(model, softmax_regularizer, λ * sum(l[j]^2 for j in 1:C))
@@ -362,9 +378,9 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     while true
         optimize!(model)
         if termination_status(model) == INVALID_MODEL && i_trial < 10
-            if strategy == :softmax
+            if strategy in [:softmax, :softmax_reg]
                 set_start_value.(l, rand(C-1) .* 2 .- 1)
-            elseif strategy == :softmax_reg
+            elseif strategy == :softmax_full_reg
                 set_start_value.(l, rand(C) .* 2 .- 1)
             elseif strategy == :constrained
                 p_0 = rand(C)
@@ -381,10 +397,10 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     if termination_status(model) != INVALID_MODEL
         _check_termination_status(model, :hellinger_distance, strategy)
     end # otherwise, just return an INVALID_MODEL result
-    if strategy == :softmax
+    if strategy in [:softmax, :softmax_reg]
         exp_l = vcat(exp.(value.(l)), 1)
         return exp_l ./ sum(exp_l)
-    elseif strategy == :softmax_reg
+    elseif strategy == :softmax_full_reg
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
     elseif strategy == :constrained
         return value.(p)
