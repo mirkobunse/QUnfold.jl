@@ -141,6 +141,7 @@ _rae(p_true::Vector{Float64}, p_hat::Vector{Float64}, ϵ::Float64) =
 
 function main(;
         output_path :: String = "",
+        configuration :: Symbol = :lq22,
         is_validation_run :: Bool = false,
         n_samples :: Int = -1,
         is_test_run :: Bool = false,
@@ -184,26 +185,41 @@ function main(;
             n_jobs = -1
         )
         ScikitLearn.fit!(c, X_trn, y_trn) # fit the base classifier
-        methods = []
-        for (method_name, method) ∈ [ # fit all methods
-                "EMQ (QuaPy)" => QuaPyEMQ(c; fit_classifier=false), # QuaPy methods for reference
+        method_configurations = if configuration == :lq22
+            [ # QuaPy methods are included for reference, softmax is :softmax_full_reg
+                "EMQ (QuaPy)" => QuaPyEMQ(c; fit_classifier=false),
                 "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
-                "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
-                "ACC (softmax reg.)" => ACC(c; strategy=:softmax_reg, fit_classifier=false),
+                "ACC (softmax)" => ACC(c; strategy=:softmax_full_reg, fit_classifier=false),
                 "ACC (pinv)" => ACC(c; strategy=:pinv, fit_classifier=false),
                 "ACC (inv)" => ACC(c; strategy=:inv, fit_classifier=false),
                 "ACC (QuaPy)" => QuaPyACC(c; fit_classifier=false),
                 "ACC (ovr)" => ACC(c; strategy=:ovr, fit_classifier=false),
                 "CC" => CC(c; fit_classifier=false),
                 "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
-                "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
-                "PACC (softmax reg.)" => PACC(c; strategy=:softmax_reg, fit_classifier=false),
+                "PACC (softmax)" => PACC(c; strategy=:softmax_full_reg, fit_classifier=false),
                 "PACC (pinv)" => PACC(c; strategy=:pinv, fit_classifier=false),
                 "PACC (inv)" => PACC(c; strategy=:inv, fit_classifier=false),
                 "PACC (QuaPy)" => QuaPyPACC(c; fit_classifier=false),
                 "PACC (ovr)" => PACC(c; strategy=:ovr, fit_classifier=false),
                 "PCC" => PCC(c; fit_classifier=false),
             ]
+        elseif configuration == :dev
+            [ # constrained strategy included for reference
+                "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
+                "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
+                "ACC (softmax reg.)" => ACC(c; strategy=:softmax_reg, fit_classifier=false),
+                "ACC (softmax full reg.)" => ACC(c; strategy=:softmax_full_reg, fit_classifier=false),
+                "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
+                "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
+                "PACC (softmax reg.)" => PACC(c; strategy=:softmax_reg, fit_classifier=false),
+                "PACC (softmax full reg.)" => PACC(c; strategy=:softmax_full_reg, fit_classifier=false),
+            ]
+        else
+            error("There is no configuration \"$(configuration)\"")
+        end
+        @info "Evaluating $(length(method_configurations)) methods" first.(method_configurations)
+        methods = []
+        for (method_name, method) ∈ method_configurations # fit all methods
             push!(methods, method_name => QUnfold.fit(method, X_trn, y_trn))
         end
 
@@ -271,6 +287,10 @@ end
 function parse_commandline()
     s = ArgParseSettings()
     @add_arg_table s begin
+        "--configuration", "-c"
+            help = "which methods to use; either \"lq22\" (default) or \"dev\""
+            arg_type = Symbol
+            default = :lq22
         "--is_validation_run", "-v"
             help = "whether this run should work on the validation set"
             action = :store_true
