@@ -20,7 +20,7 @@ jobs:
           - "1.6" # LTS
           - "1" # latest stable release
         python:
-          - "3.7"
+          - "3.10"
         os:
           - ubuntu-latest
           - macOS-latest
@@ -60,7 +60,6 @@ jobs:
         run: |
           julia --project=test/ -e '
             using Pkg;
-            Pkg.develop(PackageSpec(path=pwd()));
             Pkg.instantiate()'
       - name: Install sklearn
         run: |
