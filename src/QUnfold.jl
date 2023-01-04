@@ -126,12 +126,36 @@ struct _ACC <: AbstractMethod
     a::Vector{Float64} # acceptance factors for regularization
     fit_classifier::Bool
 end
+
+"""
+    ACC(classifier; kwargs...)
+
+The Adjusted Classify & Count method by Forman, 2008: *Quantifying counts and costs via classification*.
+"""
 ACC(c::Any; strategy::Symbol=:constrained, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
     _ACC(c, strategy, false, τ, a, fit_classifier)
+
+"""
+    PACC(classifier; kwargs...)
+
+The Probabilistic Adjusted Classify & Count method by Bella et al., 2010: *Quantification via Probability Estimators*.
+"""
 PACC(c::Any; strategy::Symbol=:constrained, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
     _ACC(c, strategy, true, τ, a, fit_classifier)
+
+"""
+    CC(classifier; kwargs...)
+
+The Classify & Count method by Forman, 2008: *Quantifying counts and costs via classification*.
+"""
 CC(c::Any; fit_classifier::Bool=true) =
     _ACC(c, :none, false, 0.0, Float64[], fit_classifier)
+
+"""
+    PCC(classifier; kwargs...)
+
+The Probabilistic Classify & Count method by Bella et al., 2010: *Quantification via Probability Estimators*.
+"""
 PCC(c::Any; fit_classifier::Bool=true) =
     _ACC(c, :none, true, 0.0, Float64[], fit_classifier)
 
@@ -170,8 +194,20 @@ struct _RUN_SVD <: AbstractMethod
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg, :unconstrained}
 end
+
+"""
+    RUN(transformer; kwargs...)
+
+The Regularized Unfolding method by Blobel, 1985: *Unfolding methods in high-energy physics experiments*.
+"""
 RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:constrained) =
     _RUN_SVD(transformer, :run, τ, n_df, a, strategy)
+
+"""
+    SVD(transformer; kwargs...)
+
+The The Singular Value Decomposition-based unfolding method by Hoecker & Kartvelishvili, 1996: *SVD approach to data unfolding*.
+"""
 SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:constrained) =
     _RUN_SVD(transformer, :svd, τ, n_df, a, strategy)
 _transformer(m::_RUN_SVD) = m.transformer
@@ -193,6 +229,11 @@ end
 
 # HDx and HDy
 
+"""
+    HDx(n_bins; kwargs...)
+
+The Hellinger Distance-based method on feature histograms by González-Castro et al., 2013: *Class distribution estimation based on the Hellinger distance*.
+"""
 struct HDx <: AbstractMethod
     n_bins::Int
     τ::Float64 # regularization strength
@@ -200,6 +241,12 @@ struct HDx <: AbstractMethod
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg}
     HDx(n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:constrained) = new(n_bins, τ, a, strategy)
 end
+
+"""
+    HDy(classifier, n_bins; kwargs...)
+
+The Hellinger Distance-based method on prediction histograms by González-Castro et al., 2013: *Class distribution estimation based on the Hellinger distance*.
+"""
 struct HDy <: AbstractMethod
     classifier::Any
     n_bins::Int
@@ -225,6 +272,11 @@ _solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{
 
 # IBU and SLD
 
+"""
+    IBU(transformer, n_bins; kwargs...)
+
+The Iterative Bayesian Unfolding method by D'Agostini, 1995: *A multidimensional unfolding method based on Bayes' theorem*.
+"""
 struct IBU <: AbstractMethod
     transformer::Union{AbstractTransformer,FittedTransformer}
     o::Int # order of the polynomial
@@ -237,6 +289,11 @@ _transformer(m::IBU) = m.transformer
 _solve(m::IBU, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     solve_expectation_maximization(M, q, N, ones(size(M, 2)) ./ size(M, 2); o=m.o, λ=m.λ, a=m.a)
 
+"""
+    SLD(classifier, n_bins; kwargs...)
+
+The Saerens-Latinne-Decaestecker method, a.k.a. EMQ or Expectation Maximization-based Quantification by Saerens et al., 2002: *Adjusting the outputs of a classifier to new a priori probabilities: A simple procedure*.
+"""
 struct SLD <: AbstractMethod
     classifier::Any
     o::Int # order of the polynomial
