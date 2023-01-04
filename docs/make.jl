@@ -4,7 +4,8 @@ makedocs(;
     sitename = "QUnfold.jl",
     pages = [
         "Home" => "index.md",
-        "API reference" => "api-reference.md"
+        "API reference" => "api-reference.md",
+        "Experiments" => "experiments.md",
     ],
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing) == "true"
