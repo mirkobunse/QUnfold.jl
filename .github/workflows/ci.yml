@@ -56,7 +56,14 @@ jobs:
           PYTHON: ''
 
       # make sure that sklearn is installed
-      - run: |
+      - name: Install test dependencies
+        run: |
+          julia --project=test/ -e '
+            using Pkg;
+            Pkg.develop(PackageSpec(path=pwd()));
+            Pkg.instantiate()'
+      - name: Install sklearn
+        run: |
           julia --project=test/ -e '
             using PyCall
             pyimport("pip").main(["install", "scikit-learn==1.1.1"])'
