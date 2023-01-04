@@ -11,19 +11,29 @@ jobs:
 
   # unit tests with coverage
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         version:
+          - "1.6" # LTS
           - "1" # latest stable release
+        python:
+          - "3.7"
         os:
           - ubuntu-latest
+          - macOS-latest
         arch:
           - x64
     steps:
       - uses: actions/checkout@v2
+
+      # install python before Julia
+      - uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+
       - uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.version }}
@@ -39,7 +49,18 @@ jobs:
             ${{ runner.os }}-${{ matrix.arch }}-test-
             ${{ runner.os }}-${{ matrix.arch }}-
             ${{ runner.os }}-
+
+      # prepare the environment for building PyCall
       - uses: julia-actions/julia-buildpkg@latest
+        env:
+          PYTHON: ''
+
+      # make sure that sklearn is installed
+      - run: |
+          julia --project=@. -e '
+            using ScikitLearn
+            @sk_import tree : DecisionTreeClassifier'
+
       - run: |
           git config --global user.name Tester
           git config --global user.email te@st.er
