@@ -58,8 +58,8 @@ jobs:
       # make sure that sklearn is installed
       - run: |
           julia --project=@. -e '
-            using ScikitLearn
-            @sk_import tree : DecisionTreeClassifier'
+            using PyCall
+            pyimport("pip").main(["install", "scikit-learn==1.1.1"])'
 
       - run: |
           git config --global user.name Tester
