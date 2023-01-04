@@ -29,7 +29,7 @@ from sklearn.metrics import confusion_matrix
 # https://github.com/HLT-ISTI/QuaPy/blob/6a5c528154c2d6d38d9f3258e667727bf692fc8b/quapy/method/aggregative.py#L319
 def accPteCondEstim(classes, y, y_):
     conf = confusion_matrix(y, y_, labels=classes).T
-    conf = conf.astype(np.float)
+    conf = conf.astype(np.float64)
     class_counts = conf.sum(axis=0)
     for i, _ in enumerate(classes):
         if class_counts[i] == 0:
