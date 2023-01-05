@@ -20,25 +20,73 @@ predict_with_background
 
 ## Quantification / unfolding methods
 
+### CC
+
 ```@docs
 CC
+```
+
+### ACC
+
+```@docs
 ACC
+```
+
+### PCC
+
+```@docs
 PCC
+```
+
+### PACC
+
+```@docs
 PACC
+```
+
+### RUN
+
+```@docs
 RUN
+```
+
+### SVD
+
+```@docs
 SVD
+```
+
+### HDx
+
+```@docs
 HDx
+```
+
+### HDy
+
+```@docs
 HDy
+```
+
+### IBU
+
+```@docs
 IBU
+```
+
+### SLD
+
+```@docs
 SLD
 ```
 
 
 ## Feature transformations
 
-TODO.
+The unfolding methods [`RUN`](@ref), [`SVD`](@ref), and [`IBU`](@ref) have the flexibility of choosing between different feature transformations.
 
 ```@docs
 ClassTransformer
 TreeTransformer
+HistogramTransformer
 ```

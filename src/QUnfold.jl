@@ -130,23 +130,71 @@ end
 """
     ACC(classifier; kwargs...)
 
-The Adjusted Classify & Count method by Forman, 2008: *Quantifying counts and costs via classification*.
+The Adjusted Classify & Count method, which solves a least squares objective with crisp classifier predictions.
+
+A regularization strength `τ > 0` yields the o-ACC method for ordinal quantification, which is proposed by Bunse et al., 2022: *Ordinal Quantification through Regularization*.
+
+**Keyword arguments**
+
+- `strategy = :softmax` is the solution strategy (see below).
+- `τ = 0.0` is the regularization strength for o-ACC.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+- `fit_classifier = true` whether or not to fit the given `classifier`.
+
+**Strategies**
+
+For binary classification, ACC is proposed by Forman, 2008: *Quantifying counts and costs via classification*. In the multi-class setting, multiple extensions are available.
+
+- `:softmax` (default; our method) improves `:softmax_full_reg` by setting one latent parameter to zero instead of introducing a technical regularization term.
+- `:constrained` constrains the optimization to proper probability densities, as proposed by Hopkins & King, 2010: *A method of automated nonparametric content analysis for social science*.
+- `:pinv` computes a pseudo-inverse akin to a minimum-norm constraint, as discussed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
+- `:inv` computes the true inverse (if existent) of the transfer matrix `M`, as proposed by Vucetic & Obradovic, 2001: *Classification on data with biased class distribution*.
+- `:ovr` solves multiple binary one-versus-rest adjustments, as proposed by Forman (2008).
+- `:none` yields the `CC` method without any adjustment.
+- `:softmax_full_reg` (our method) introduces a soft-max layer, which makes contraints obsolete. This strategy employs a technical regularization term, as proposed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
+- `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 """
-ACC(c::Any; strategy::Symbol=:constrained, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
+ACC(c::Any; strategy::Symbol=:softmax, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
     _ACC(c, strategy, false, τ, a, fit_classifier)
 
 """
     PACC(classifier; kwargs...)
 
-The Probabilistic Adjusted Classify & Count method by Bella et al., 2010: *Quantification via Probability Estimators*.
+The Probabilistic Adjusted Classify & Count method, which solves a least squares objective with predictions of posterior probabilities.
+
+A regularization strength `τ > 0` yields the o-PACC method for ordinal quantification, which is proposed by Bunse et al., 2022: *Ordinal Quantification through Regularization*.
+
+**Keyword arguments**
+
+- `strategy = :softmax` is the solution strategy (see below).
+- `τ = 0.0` is the regularization strength for o-PACC.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+- `fit_classifier = true` whether or not to fit the given `classifier`.
+
+**Strategies**
+
+For binary classification, PACC is proposed by Bella et al., 2010: *Quantification via Probability Estimators*. In the multi-class setting, multiple extensions are available.
+
+- `:softmax` (default; our method) improves `:softmax_full_reg` by setting one latent parameter to zero instead of introducing a technical regularization term.
+- `:constrained` constrains the optimization to proper probability densities, as proposed by Hopkins & King, 2010: *A method of automated nonparametric content analysis for social science*.
+- `:pinv` computes a pseudo-inverse akin to a minimum-norm constraint, as discussed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
+- `:inv` computes the true inverse (if existent) of the transfer matrix `M`, as proposed by Vucetic & Obradovic, 2001: *Classification on data with biased class distribution*.
+- `:ovr` solves multiple binary one-versus-rest adjustments, as proposed by Forman (2008).
+- `:none` yields the `CC` method without any adjustment.
+- `:softmax_full_reg` (our method) introduces a soft-max layer, which makes contraints obsolete. This strategy employs a technical regularization term, as proposed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
+- `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 """
-PACC(c::Any; strategy::Symbol=:constrained, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
+PACC(c::Any; strategy::Symbol=:softmax, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
     _ACC(c, strategy, true, τ, a, fit_classifier)
 
 """
     CC(classifier; kwargs...)
 
-The Classify & Count method by Forman, 2008: *Quantifying counts and costs via classification*.
+The Classify & Count method, which uses crisp classifier predictions without any adjustment. This weak baseline method is proposed by Forman, 2008: *Quantifying counts and costs via classification*.
+
+**Keyword arguments**
+
+- `fit_classifier = true` whether or not to fit the given `classifier`.
 """
 CC(c::Any; fit_classifier::Bool=true) =
     _ACC(c, :none, false, 0.0, Float64[], fit_classifier)
@@ -154,7 +202,11 @@ CC(c::Any; fit_classifier::Bool=true) =
 """
     PCC(classifier; kwargs...)
 
-The Probabilistic Classify & Count method by Bella et al., 2010: *Quantification via Probability Estimators*.
+The Probabilistic Classify & Countmethod, which uses predictions of posterior probabilities without any adjustment. This method is proposed by Bella et al., 2010: *Quantification via Probability Estimators*.
+
+**Keyword arguments**
+
+- `fit_classifier = true` whether or not to fit the given `classifier`.
 """
 PCC(c::Any; fit_classifier::Bool=true) =
     _ACC(c, :none, true, 0.0, Float64[], fit_classifier)
@@ -199,23 +251,59 @@ end
     RUN(transformer; kwargs...)
 
 The Regularized Unfolding method by Blobel, 1985: *Unfolding methods in high-energy physics experiments*.
+
+**Keyword arguments**
+
+- `strategy = :softmax` is the solution strategy (see below).
+- `τ = 1e-6` is the regularization strength for ordinal quantification.
+- `n_df = -1` (only used if `strategy==:original`) is the effective number of degrees of freedom, required to be `0 < n_df <= C` where `C` is the number of classes.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+
+**Strategies**
+
+Blobel's loss function, feature transformation, and regularization can be optimized with multiple strategies.
+
+- `:softmax` (default; our method) improves `:softmax_full_reg` by setting one latent parameter to zero instead of introducing a technical regularization term.
+- `:original` is the original, unconstrained Newton optimization proposed by Blobel (1985).
+- `:constrained` constrains the optimization to proper probability densities, as proposed by Hopkins & King, 2010: *A method of automated nonparametric content analysis for social science*.
+- `:softmax_full_reg` (our method) introduces a soft-max layer, which makes contraints obsolete. This strategy employs a technical regularization term, as proposed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
+- `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
+- `:unconstrained` (our method) is similar to `:original`, but uses a more generic solver.
 """
-RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:constrained) =
+RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:softmax) =
     _RUN_SVD(transformer, :run, τ, n_df, a, strategy)
 
 """
     SVD(transformer; kwargs...)
 
 The The Singular Value Decomposition-based unfolding method by Hoecker & Kartvelishvili, 1996: *SVD approach to data unfolding*.
+
+**Keyword arguments**
+
+- `strategy = :softmax` is the solution strategy (see below).
+- `τ = 1e-6` is the regularization strength for ordinal quantification.
+- `n_df = -1` (only used if `strategy==:original`) is the effective rank, required to be `0 < n_df < C` where `C` is the number of classes.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+
+**Strategies**
+
+Hoecker & Kartvelishvili's loss function, feature transformation, and regularization can be optimized with multiple strategies.
+
+- `:softmax` (default; our method) improves `:softmax_full_reg` by setting one latent parameter to zero instead of introducing a technical regularization term.
+- `:original` is the original, analytic solution proposed by Hoecker & Kartvelishvili (1996).
+- `:constrained` constrains the optimization to proper probability densities, as proposed by Hopkins & King, 2010: *A method of automated nonparametric content analysis for social science*.
+- `:softmax_full_reg` (our method) introduces a soft-max layer, which makes contraints obsolete. This strategy employs a technical regularization term, as proposed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
+- `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
+- `:unconstrained` (our method) is similar to `:original`, but uses a more generic solver.
 """
-SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:constrained) =
+SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:softmax) =
     _RUN_SVD(transformer, :svd, τ, n_df, a, strategy)
 _transformer(m::_RUN_SVD) = m.transformer
 _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q))) =
     if m.loss == :run
         solve_maximum_likelihood(M, q, N, b; τ=m.τ, n_df=m.n_df > 0 ? m.n_df : size(M, 2), a=m.a, strategy=m.strategy)
     elseif m.loss == :svd # weighted least squares
-        strategy = m.strategy == :original ? :svd : m.strategy
+        strategy = m.strategy == :original ? :svd : m.strategy # rename :original -> :svd
         n_df = m.n_df > 0 ? m.n_df : size(M, 2)
         solve_least_squares(M, q, N; w=_svd_weights(q, N), τ=m.τ, n_df=n_df, a=m.a, strategy=strategy)
     else
@@ -233,19 +321,54 @@ end
     HDx(n_bins; kwargs...)
 
 The Hellinger Distance-based method on feature histograms by González-Castro et al., 2013: *Class distribution estimation based on the Hellinger distance*.
+
+The parameter `n_bins` specifies the number of bins *per feature*. A regularization strength `τ > 0` yields the o-HDx method for ordinal quantification, which is proposed by Bunse et al., 2022: *Machine learning for acquiring knowledge in astro-particle physics*.
+
+**Keyword arguments**
+
+- `strategy = :softmax` is the solution strategy (see below).
+- `τ = 0.0` is the regularization strength for o-HDx.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+
+**Strategies**
+
+González-Castro et al.'s loss function and feature transformation can be optimized with multiple strategies.
+
+- `:softmax` (default; our method) improves `:softmax_full_reg` by setting one latent parameter to zero instead of introducing a technical regularization term.
+- `:constrained` constrains the optimization to proper probability densities, as proposed by Hopkins & King, 2010: *A method of automated nonparametric content analysis for social science*.
+- `:softmax_full_reg` (our method) introduces a soft-max layer, which makes contraints obsolete. This strategy employs a technical regularization term, as proposed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
+- `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 """
 struct HDx <: AbstractMethod
     n_bins::Int
     τ::Float64 # regularization strength
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg}
-    HDx(n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:constrained) = new(n_bins, τ, a, strategy)
+    HDx(n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:softmax) = new(n_bins, τ, a, strategy)
 end
 
 """
     HDy(classifier, n_bins; kwargs...)
 
 The Hellinger Distance-based method on prediction histograms by González-Castro et al., 2013: *Class distribution estimation based on the Hellinger distance*.
+
+The parameter `n_bins` specifies the number of bins *per class*. A regularization strength `τ > 0` yields the o-HDx method for ordinal quantification, which is proposed by Bunse et al., 2022: *Machine learning for acquiring knowledge in astro-particle physics*.
+
+**Keyword arguments**
+
+- `strategy = :softmax` is the solution strategy (see below).
+- `τ = 0.0` is the regularization strength for o-HDx.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+- `fit_classifier = true` whether or not to fit the given `classifier`.
+
+**Strategies**
+
+González-Castro et al.'s loss function and feature transformation can be optimized with multiple strategies.
+
+- `:softmax` (default; our method) improves `:softmax_full_reg` by setting one latent parameter to zero instead of introducing a technical regularization term.
+- `:constrained` constrains the optimization to proper probability densities, as proposed by Hopkins & King, 2010: *A method of automated nonparametric content analysis for social science*.
+- `:softmax_full_reg` (our method) introduces a soft-max layer, which makes contraints obsolete. This strategy employs a technical regularization term, as proposed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
+- `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 """
 struct HDy <: AbstractMethod
     classifier::Any
@@ -254,7 +377,7 @@ struct HDy <: AbstractMethod
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg}
     fit_classifier::Bool
-    HDy(classifier::Any, n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:constrained, fit_classifier::Bool=true) =
+    HDy(classifier::Any, n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:softmax, fit_classifier::Bool=true) =
         new(classifier, n_bins, τ, a, strategy, fit_classifier)
 end
 _transformer(m::HDx) = HistogramTransformer(m.n_bins)
@@ -276,6 +399,12 @@ _solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{
     IBU(transformer, n_bins; kwargs...)
 
 The Iterative Bayesian Unfolding method by D'Agostini, 1995: *A multidimensional unfolding method based on Bayes' theorem*.
+
+**Keyword arguments**
+
+- `o = 0` is the order of the polynomial for ordinal quantification.
+- `λ = 0.0` is the impact of the polynomial for ordinal quantification.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
 """
 struct IBU <: AbstractMethod
     transformer::Union{AbstractTransformer,FittedTransformer}
@@ -290,9 +419,18 @@ _solve(m::IBU, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N
     solve_expectation_maximization(M, q, N, ones(size(M, 2)) ./ size(M, 2); o=m.o, λ=m.λ, a=m.a)
 
 """
-    SLD(classifier, n_bins; kwargs...)
+    SLD(classifier; kwargs...)
 
 The Saerens-Latinne-Decaestecker method, a.k.a. EMQ or Expectation Maximization-based Quantification by Saerens et al., 2002: *Adjusting the outputs of a classifier to new a priori probabilities: A simple procedure*.
+
+A polynomial order `o > 0` and regularization impact `λ > 0` yield the o-SLD method for ordinal quantification, which is proposed by Bunse et al., 2022: *Machine learning for acquiring knowledge in astro-particle physics*.
+
+**Keyword arguments**
+
+- `o = 0` is the order of the polynomial for o-SLD.
+- `λ = 0.0` is the impact of the polynomial for o-SLD.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+- `fit_classifier = true` whether or not to fit the given `classifier`.
 """
 struct SLD <: AbstractMethod
     classifier::Any

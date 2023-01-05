@@ -36,6 +36,16 @@ onehot_encoding(y, classes=unique(y)) = Float64.(permutedims(classes) .== y)
 
 # classification-based feature transformation
 
+"""
+    ClassTransformer(classifier; kwargs...)
+
+This transformer yields the classification-based feature transformation used in `ACC`, `PACC`, `CC`, `PCC`, and `SLD`.
+
+**Keyword arguments**
+
+- `is_probabilistic = false` whether or not to use posterior predictions.
+- `fit_classifier = true` whether or not to fit the given `classifier`.
+"""
 struct ClassTransformer <: AbstractTransformer
     classifier::Any
     is_probabilistic::Bool
@@ -84,6 +94,15 @@ _transform(f::FittedClassTransformer, X::Any) =
 
 # histogram-based feature transformation
 
+"""
+    HistogramTransformer(n_bins; kwargs...)
+
+This transformer yields the histogram-based feature transformation used in `HDx` and `HDy`. The parameter `n_bins` specifies the number of bins *per input feature*.
+
+**Keyword arguments**
+
+- `preprocessor = nothing` can be another `AbstractTransformer` that is called before this transformer.
+"""
 struct HistogramTransformer <: AbstractTransformer
     n_bins::Int
     preprocessor::Union{AbstractTransformer,Nothing}
@@ -127,6 +146,16 @@ _transform(f::Nothing, X::Any) = X
 
 # tree-induced partitioning
 
+"""
+    TreeTransformer(tree; kwargs...)
+
+This transformer yields a tree-induced partitioning, as proposed by Börner et al., 2017: *Measurement/simulation mismatches and multivariate data discretization in the machine learning era*.
+
+**Keyword arguments**
+
+- `fit_frac = 1/5` is the fraction of data used for training the tree if `fit_tree==true`.
+- `fit_tree = true` whether or not to fit the given `tree`.
+"""
 struct TreeTransformer <: AbstractTransformer
     tree::Any
     fit_tree::Bool

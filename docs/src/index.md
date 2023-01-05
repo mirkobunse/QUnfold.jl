@@ -40,16 +40,16 @@ p_est = predict(trained_acc, X_tst) # return a prevalence vector
 
 The following methods are implemented here:
 
-- [`CC`](@ref): The basic Classify & Count method (Forman, 2008).
-- [`ACC`](@ref): The Adjusted Classify & Count method (Forman, 2008).
-- [`PCC`](@ref): The Probabilistic Classify & Count method (Bella et al., 2010).
-- [`PACC`](@ref): The Probabilistic Adjusted Classify & Count method (Bella et al., 2010).
-- [`RUN`](@ref): The Regularized Unfolding method (Blobel, 1985).
-- [`SVD`](@ref): The Singular Value Decomposition-based unfolding method (Hoecker & Kartvelishvili, 1996).
-- [`HDx`](@ref): The Hellinger Distance-based method on feature histograms (González-Castro et al., 2013).
-- [`HDy`](@ref): The Hellinger Distance-based method on prediction histograms (González-Castro et al., 2013).
-- [`IBU`](@ref): The Iterative Bayesian Unfolding method (D'Agostini, 1995).
-- [`SLD`](@ref): The Saerens-Latinne-Decaestecker method, a.k.a. EMQ or Expectation Maximization-based Quantification (Saerens et al., 2002).
+- [`CC`](@ref): The basic Classify & Count method.
+- [`ACC`](@ref): The Adjusted Classify & Count method.
+- [`PCC`](@ref): The Probabilistic Classify & Count method.
+- [`PACC`](@ref): The Probabilistic Adjusted Classify & Count method.
+- [`RUN`](@ref): The Regularized Unfolding method.
+- [`SVD`](@ref): The Singular Value Decomposition-based unfolding method.
+- [`HDx`](@ref): The Hellinger Distance-based method on feature histograms.
+- [`HDy`](@ref): The Hellinger Distance-based method on prediction histograms.
+- [`IBU`](@ref): The Iterative Bayesian Unfolding method.
+- [`SLD`](@ref): The Saerens-Latinne-Decaestecker method, a.k.a. EMQ or Expectation Maximization-based Quantification.
 
 Most of these methods support regularization towards smooth estimates, which is beneficial in ordinal quantification.
 

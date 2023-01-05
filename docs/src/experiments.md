@@ -12,6 +12,8 @@ The `experiments/` directory contains a Makefile with which you can run the expe
 }
 ```
 
+## Running the experiments
+
 **CAUTION:** We have run these experiments on 40 cores with 48 GB of RAM; with this setup, the experiments took 67 h. If you just want to check whether the scripts work, you can call `make -f lequa.mk tests` to traverse the entire code path with just a few iterations; this test completes in a few minutes.
 
 ```
@@ -20,6 +22,8 @@ make -f lequa.mk -n # inspect all steps of our experimentation without running t
 
 make -f lequa.mk # run all experimentation (CAUTION: computation-heavy)
 ```
+
+## Docker setup
 
 We provide a [Docker](https://docs.docker.com/) setup for those who prefer to run the experiments in an isolated environment, and possibly in a computing cluster.
 

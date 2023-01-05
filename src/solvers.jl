@@ -31,7 +31,7 @@ end
 
 # solvers
 
-function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, n_df::Int=size(M, 2), a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, n_df::Int=size(M, 2), a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, λ::Float64=1e-6)
     _check_solver_args(M, q)
     if !all(isfinite.(w))
         throw(ArgumentError("Not all values in w are finite"))
@@ -140,7 +140,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
 end
 
 
-function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, n_df::Int=size(M, 2), λ::Float64=1e-6)
+function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, n_df::Int=size(M, 2), λ::Float64=1e-6)
     _check_solver_args(M, q)
     F, C = size(M) # the numbers of features and classes
     T = LinearAlgebra.diagm( # the Tikhonov matrix for curvature regularization
@@ -298,7 +298,7 @@ function _select_τ(n_df::Number, eigvals_T::Vector{Float64}, min::Float64=-12.0
 end
 
 
-function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int, n_bins::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:constrained, λ::Float64=1e-6)
+function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int, n_bins::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, λ::Float64=1e-6)
     _check_solver_args(M, q)
     indices = [ (1+(i-1)*n_bins):(i*n_bins) for i in 1:Int(size(M, 1) / n_bins) ]
     if any(sum(M; dims=2) .== 0)
