@@ -134,7 +134,7 @@ function _transform(f::FittedHistogramTransformer, X::Any; apply_preprocessor::B
         edges = f.edges[:,j]
         offset = (j-1) * n_bins
         for i in 1:size(X, 1) # sample index
-            fX[i, offset + searchsortedfirst(edges, X[i,j])] = 1
+            fX[i, offset + searchsortedfirst(edges, X[begin-1+i,begin-1+j])] = 1
         end
     end
     return fX
@@ -179,14 +179,14 @@ function fit(t::TreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer
         tree = ScikitLearnBase.clone(tree)
         i_rand = randperm(length(y)) # shuffle (X, y)
         i_tree = round(Int, length(y) * t.fit_frac) # where to split
-        ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
+        ScikitLearnBase.fit!(tree, X[begin-1+i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
 
         # obtain all leaf indices by probing the tree with the training data
-        x = _apply_tree(tree, X[i_rand[1:i_tree], :]) # leaf indices (rather arbitrary)
+        x = _apply_tree(tree, X[begin-1+i_rand[1:i_tree], :]) # leaf indices (rather arbitrary)
         index_map = Dict(zip(unique(x), 1:length(unique(x)))) # map to 1, …, F
 
         # limit (X, y) to the remaining data that was not used for fitting the tree
-        x = _apply_tree(tree, X[i_rand[(i_tree+1):end], :]) # apply to the remaining data
+        x = _apply_tree(tree, X[begin-1+i_rand[(i_tree+1):end], :]) # apply to the remaining data
         y = y[i_rand[(i_tree+1):end]]
     else
         # guess the leaf indices by probing the tree with the available data
