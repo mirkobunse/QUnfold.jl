@@ -69,9 +69,9 @@ function _fit_transform(t::ClassTransformer, X::Any, y::AbstractVector{T}) where
         ScikitLearnBase.fit!(classifier, X, y)
     end
     fX = classifier.oob_decision_function_
-    i_finite = [ all(isfinite.(x)) for x in eachrow(fX) ]
-    fX = fX[i_finite,:]
-    y = y[i_finite]
+    is_finite = [ all(isfinite.(x)) for x in eachrow(fX) ] # Boolean vector
+    fX = fX[is_finite,:]
+    y = y[is_finite]
     if !t.is_probabilistic
         fX = onehot_encoding(
             mapslices(argmax, fX; dims=2)[:], # y_pred
@@ -124,7 +124,7 @@ end
 _edges(x::AbstractVector{T}, n_bins::Int) where {T<:Real} =
     collect(1:(n_bins-1)) .* (maximum(x) - minimum(x)) / n_bins .+ minimum(x)
 
-function _transform(f::FittedHistogramTransformer, X::Any; apply_preprocessor::Bool=true)
+function _transform(f::FittedHistogramTransformer, X::AbstractArray; apply_preprocessor::Bool=true)
     if apply_preprocessor
         X = _transform(f.preprocessor, X)
     end
@@ -134,7 +134,7 @@ function _transform(f::FittedHistogramTransformer, X::Any; apply_preprocessor::B
         edges = f.edges[:,j]
         offset = (j-1) * n_bins
         for i in 1:size(X, 1) # sample index
-            fX[i, offset + searchsortedfirst(edges, X[begin-1+i,begin-1+j])] = 1
+            fX[i, offset + searchsortedfirst(edges, X[i,j])] = 1
         end
     end
     return fX
@@ -171,7 +171,7 @@ struct FittedTreeTransformer <: FittedTransformer
     y::Vector{Int}
 end
 
-function fit(t::TreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
+function fit(t::TreeTransformer, X::AbstractArray, y::AbstractVector{T}) where {T<:Integer}
     tree = t.tree
     index_map = Dict{Int,Int}()
     x = Int[]
@@ -179,14 +179,14 @@ function fit(t::TreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer
         tree = ScikitLearnBase.clone(tree)
         i_rand = randperm(length(y)) # shuffle (X, y)
         i_tree = round(Int, length(y) * t.fit_frac) # where to split
-        ScikitLearnBase.fit!(tree, X[begin-1 .+ i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
+        ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
 
         # obtain all leaf indices by probing the tree with the training data
-        x = _apply_tree(tree, X[begin-1 .+ i_rand[1:i_tree], :]) # leaf indices (rather arbitrary)
+        x = _apply_tree(tree, X[i_rand[1:i_tree], :]) # leaf indices (rather arbitrary)
         index_map = Dict(zip(unique(x), 1:length(unique(x)))) # map to 1, …, F
 
         # limit (X, y) to the remaining data that was not used for fitting the tree
-        x = _apply_tree(tree, X[begin-1 .+ i_rand[(i_tree+1):end], :]) # apply to the remaining data
+        x = _apply_tree(tree, X[i_rand[(i_tree+1):end], :]) # apply to the remaining data
         y = y[i_rand[(i_tree+1):end]]
     else
         # guess the leaf indices by probing the tree with the available data

@@ -10,6 +10,7 @@ import ScikitLearn
 Random.seed!(42) # make tests reproducible
 
 RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").RandomForestClassifier
+DecisionTreeClassifier = pyimport_conda("sklearn.tree", "scikit-learn").DecisionTreeClassifier
 
 function generate_data(p, M; n_samples=1000)
     y = StatsBase.sample(1:3, Weights(p), n_samples)
@@ -81,7 +82,33 @@ def paccPteCondEstim(classes, y, y_):
     end
     M_pacc ./= sum(M_pacc; dims=1)
     M_pacc_quapy = py"paccPteCondEstim"(1:3, y_trn, c.oob_decision_function_)
-    @info "M_pacc" M_pacc M_pacc_quapy
+
+    # repeat the PACC test with a sparse scipy matrix
+    X_sparse = pyimport_conda("scipy.sparse", "scipy").csc_matrix(X_trn)
+    _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(pacc), X_sparse, y_trn)
+    M_sparse = zeros(size(fX, 2), 3)
+    for (fX_i, fy_i) in zip(eachrow(fX), fy)
+        M_sparse[:, fy_i] .+= fX_i
+    end
+    M_sparse ./= sum(M_sparse; dims=1)
+    @info "M_pacc" M_pacc M_pacc_quapy M_sparse
+
+    # call other transformers
+    f, fX, fy = QUnfold._fit_transform(QUnfold.TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9)), X_trn, y_trn)
+    M_tree = zeros(size(fX, 2), 3)
+    for (fX_i, fy_i) in zip(eachrow(fX), fy)
+        M_tree[:, fy_i] .+= fX_i
+    end
+    M_tree ./= sum(M_tree; dims=1)
+    @info "M_tree" M_tree mean(y_trn .== ScikitLearn.predict(f.tree, X_trn))
+
+    f, fX, fy = QUnfold._fit_transform(QUnfold.HistogramTransformer(2), X_trn, y_trn)
+    M_hist = zeros(size(fX, 2), 3)
+    for (fX_i, fy_i) in zip(eachrow(fX), fy)
+        M_hist[:, fy_i] .+= fX_i
+    end
+    M_hist ./= sum(M_hist; dims=1)
+    @info "M_hist" M_hist
 end # testset
 
 @testset "Execution of all methods" begin
