@@ -177,7 +177,8 @@ function fit(t::TreeTransformer, X::AbstractArray, y::AbstractVector{T}) where {
     x = Int[]
     if t.fit_tree
         tree = ScikitLearnBase.clone(tree)
-        i_rand = randperm(length(y)) # shuffle (X, y)
+        rng = MersenneTwister(tree.random_state)
+        i_rand = randperm(rng, length(y)) # shuffle (X, y)
         i_tree = round(Int, length(y) * t.fit_frac) # where to split
         ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
 

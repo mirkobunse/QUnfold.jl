@@ -66,49 +66,35 @@ def paccPteCondEstim(classes, y, y_):
 
     acc = ACC(c; fit_classifier=false)
     _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(acc), X_trn, y_trn)
-    M_acc = zeros(size(fX, 2), 3)
-    for (fX_i, fy_i) in zip(eachrow(fX), fy)
-        M_acc[:, fy_i] .+= fX_i
-    end
-    M_acc ./= sum(M_acc; dims=1)
+    M_acc = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
     M_acc_quapy = py"accPteCondEstim"(1:3, y_trn, y_oob)
-    @info "M_acc" M_acc M_acc_quapy
+    @test M_acc ≈ M_acc_quapy
 
     pacc = PACC(c; fit_classifier=false)
     _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(pacc), X_trn, y_trn)
-    M_pacc = zeros(size(fX, 2), 3)
-    for (fX_i, fy_i) in zip(eachrow(fX), fy)
-        M_pacc[:, fy_i] .+= fX_i
-    end
-    M_pacc ./= sum(M_pacc; dims=1)
+    M_pacc = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
     M_pacc_quapy = py"paccPteCondEstim"(1:3, y_trn, c.oob_decision_function_)
 
     # repeat the PACC test with a sparse scipy matrix
     X_sparse = pyimport_conda("scipy.sparse", "scipy").csc_matrix(X_trn)
     _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(pacc), X_sparse, y_trn)
-    M_sparse = zeros(size(fX, 2), 3)
-    for (fX_i, fy_i) in zip(eachrow(fX), fy)
-        M_sparse[:, fy_i] .+= fX_i
-    end
-    M_sparse ./= sum(M_sparse; dims=1)
-    @info "M_pacc" M_pacc M_pacc_quapy M_sparse
+    M_sparse = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
+
+    # repeat the PACC test with minimum(y) == 0
+    y_zero = y_trn .- 1
+    _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(pacc), X_trn, y_zero)
+    M_zero = QUnfold._estimate_M(fX, fy, unique(y_zero))[1]
+    @test M_pacc ≈ M_pacc_quapy
+    @test M_pacc ≈ M_sparse
+    @test M_pacc ≈ M_zero
 
     # call other transformers
-    f, fX, fy = QUnfold._fit_transform(QUnfold.TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9)), X_trn, y_trn)
-    M_tree = zeros(size(fX, 2), 3)
-    for (fX_i, fy_i) in zip(eachrow(fX), fy)
-        M_tree[:, fy_i] .+= fX_i
-    end
-    M_tree ./= sum(M_tree; dims=1)
-    @info "M_tree" M_tree mean(y_trn .== ScikitLearn.predict(f.tree, X_trn))
-
     f, fX, fy = QUnfold._fit_transform(QUnfold.HistogramTransformer(2), X_trn, y_trn)
-    M_hist = zeros(size(fX, 2), 3)
-    for (fX_i, fy_i) in zip(eachrow(fX), fy)
-        M_hist[:, fy_i] .+= fX_i
-    end
-    M_hist ./= sum(M_hist; dims=1)
-    @info "M_hist" M_hist
+    M_hist = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
+
+    f, fX, fy = QUnfold._fit_transform(QUnfold.TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9)), X_trn, y_trn)
+    M_tree = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
+    @info "M" M_acc M_pacc M_hist M_tree mean(y_trn .== ScikitLearn.predict(f.tree, X_trn))
 end # testset
 
 @testset "Execution of all methods" begin
@@ -126,25 +112,24 @@ end # testset
     @info "Artificial quantification task " M p_tst
 
     c = RandomForestClassifier(; oob_score=true, random_state=rand(UInt32))
-    ScikitLearn.fit!(c, X_trn, y_trn)
-    t = QUnfold.fit(TreeTransformer(9), X_trn, y_trn)
+    t = TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32)))
     for (name, method) in [
-            "o-ACC (constrained, τ=10.0)" => ACC(c; τ=10.0, strategy=:constrained, fit_classifier=false),
-            "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
-            "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
-            "ACC (softmax_reg)" => ACC(c; strategy=:softmax_reg, fit_classifier=false),
-            "ACC (softmax_full_reg)" => ACC(c; strategy=:softmax_full_reg, fit_classifier=false),
-            "ACC (pinv)" => ACC(c; strategy=:pinv, fit_classifier=false),
-            "ACC (inv)" => ACC(c; strategy=:inv, fit_classifier=false),
-            "CC" => CC(c; fit_classifier=false),
-            "o-PACC (constrained, τ=10.0)" => PACC(c; τ=10.0, strategy=:constrained, fit_classifier=false),
-            "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
-            "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
-            "PACC (softmax_reg)" => PACC(c; strategy=:softmax_reg, fit_classifier=false),
-            "PACC (softmax_full_reg)" => PACC(c; strategy=:softmax_full_reg, fit_classifier=false),
-            "PACC (pinv)" => PACC(c; strategy=:pinv, fit_classifier=false),
-            "PACC (inv)" => PACC(c; strategy=:inv, fit_classifier=false),
-            "PCC" => PCC(c; fit_classifier=false),
+            "o-ACC (constrained, τ=10.0)" => ACC(c; τ=10.0, strategy=:constrained),
+            "ACC (constrained)" => ACC(c; strategy=:constrained),
+            "ACC (softmax)" => ACC(c; strategy=:softmax),
+            "ACC (softmax_reg)" => ACC(c; strategy=:softmax_reg),
+            "ACC (softmax_full_reg)" => ACC(c; strategy=:softmax_full_reg),
+            "ACC (pinv)" => ACC(c; strategy=:pinv),
+            "ACC (inv)" => ACC(c; strategy=:inv),
+            "CC" => CC(c),
+            "o-PACC (constrained, τ=10.0)" => PACC(c; τ=10.0, strategy=:constrained),
+            "PACC (constrained)" => PACC(c; strategy=:constrained),
+            "PACC (softmax)" => PACC(c; strategy=:softmax),
+            "PACC (softmax_reg)" => PACC(c; strategy=:softmax_reg),
+            "PACC (softmax_full_reg)" => PACC(c; strategy=:softmax_full_reg),
+            "PACC (pinv)" => PACC(c; strategy=:pinv),
+            "PACC (inv)" => PACC(c; strategy=:inv),
+            "PCC" => PCC(c),
             "RUN (constrained, τ=1e-6)" => RUN(t; strategy=:constrained, τ=1e-6),
             "RUN (softmax, τ=1e-6)" => RUN(t; strategy=:softmax, τ=1e-6),
             "RUN (softmax_reg, τ=1e-6)" => RUN(t; strategy=:softmax_reg, τ=1e-6),
@@ -166,18 +151,20 @@ end # testset
             "HDx (softmax)" => HDx(3; strategy=:softmax),
             "HDx (softmax_reg)" => HDx(3; strategy=:softmax_reg),
             "HDx (softmax_full_reg)" => HDx(3; strategy=:softmax_full_reg),
-            "o-HDy (constrained, τ=10.0)" => HDy(c, 3; τ=10.0, strategy=:constrained, fit_classifier=false),
-            "HDy (constrained)" => HDy(c, 3; strategy=:constrained, fit_classifier=false),
-            "HDy (softmax)" => HDy(c, 3; strategy=:softmax, fit_classifier=false),
-            "HDy (softmax_reg)" => HDy(c, 3; strategy=:softmax_reg, fit_classifier=false),
-            "HDy (softmax_full_reg)" => HDy(c, 3; strategy=:softmax_full_reg, fit_classifier=false),
+            "o-HDy (constrained, τ=10.0)" => HDy(c, 3; τ=10.0, strategy=:constrained),
+            "HDy (constrained)" => HDy(c, 3; strategy=:constrained),
+            "HDy (softmax)" => HDy(c, 3; strategy=:softmax),
+            "HDy (softmax_reg)" => HDy(c, 3; strategy=:softmax_reg),
+            "HDy (softmax_full_reg)" => HDy(c, 3; strategy=:softmax_full_reg),
             "RUN (original, n_df=2)" => RUN(t; strategy=:original, n_df=2),
             "SVD (original, n_df=2)" => QUnfold.SVD(t; strategy=:original, n_df=2),
             "IBU (o=0, λ=1.)" => IBU(t; o=0, λ=1.),
             "o-SLD (o=0, λ=1.)" => SLD(c; o=0, λ=1.),
             # "RUN (unconstrained, τ=10.0)" => RUN(t; strategy=:unconstrained, τ=10.0),
         ]
-        @info name p_hat=QUnfold.predict(QUnfold.fit(method, X_trn, y_trn), X_tst)
+        p_hat = QUnfold.predict(QUnfold.fit(method, X_trn, y_trn), X_tst)
+        @info name p_hat
+        @test p_hat ≈ QUnfold.predict(QUnfold.fit(method, X_trn, y_trn .- 1), X_tst) atol=0.2
     end
 
     # @test x_data[1] == x_data[2]

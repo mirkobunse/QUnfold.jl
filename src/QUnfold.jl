@@ -79,12 +79,22 @@ Return a copy of the QUnfold method `m` that is fitted to the data set `(X, y)`.
 """
 function fit(m::AbstractMethod, X::Any, y::AbstractVector{T}) where {T <: Integer}
     f, fX, fy = _fit_transform(_transformer(m), X, y) # f(x) for x ∈ X
-    M = zeros(size(fX, 2), length(unique(y))) # (n_features, n_classes)
+    M, p_trn = _estimate_M(fX, fy, unique(y))
+    return FittedMethod(m, M, f, p_trn) # normalize M
+end
+
+function _estimate_M(fX::AbstractMatrix{T}, fy::AbstractVector{I}, classes::AbstractVector{I}) where {T<:Real, I<:Integer}
+    if minimum(classes) == 0
+        fy .+= 1
+    elseif minimum(classes) != 1
+        @error "minimum(y) ∉ [0, 1]"
+    end
+    M = zeros(size(fX, 2), length(classes)) # (n_features, n_classes)
     for (fX_i, fy_i) in zip(eachrow(fX), fy)
         M[:, fy_i] .+= fX_i # one histogram of f(X) per class
     end
     p_trn = sum(M; dims=1)[:] / sum(M)
-    return FittedMethod(m, M ./ sum(M; dims=1), f, p_trn) # normalize M
+    return M ./ sum(M; dims=1), p_trn # = (M, p_trn)
 end
 
 """
