@@ -37,6 +37,11 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
     if !all(isfinite.(w))
         throw(ArgumentError("Not all values in w are finite"))
     end
+    if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
+        nonzero = sum(M; dims=2)[:] .> 0
+        q = q[nonzero]
+        M = M[nonzero, :]
+    end
     F, C = size(M) # the numbers of features and classes
 
     if strategy == :svd # here, we assume p contains counts, not probabilities
@@ -143,6 +148,12 @@ end
 
 function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, n_df::Int=size(M, 2), λ::Float64=1e-6)
     _check_solver_args(M, q)
+    if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
+        nonzero = sum(M; dims=2)[:] .> 0
+        q = q[nonzero]
+        M = M[nonzero, :]
+        b = b[nonzero]
+    end
     F, C = size(M) # the numbers of features and classes
     T = LinearAlgebra.diagm( # the Tikhonov matrix for curvature regularization
         -1 => fill(-1, C-1),
@@ -302,7 +313,7 @@ end
 function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int, n_bins::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, λ::Float64=1e-6)
     _check_solver_args(M, q)
     indices = [ (1+(i-1)*n_bins):(i*n_bins) for i in 1:Int(size(M, 1) / n_bins) ]
-    if any(sum(M; dims=2) .== 0)
+    if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
         nonzero = sum(M; dims=2)[:] .> 0
         q = q[nonzero]
         M = M[nonzero, :]
@@ -318,7 +329,6 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
             end
             indices_out
         end
-        @debug "HD limited to non-zero dimensions" indices[end][end] sum(map(length, indices)) size(q)
     end
     M = M .* (sum(q)^2 / (sum(b) + sum(q))) ./ sum(M; dims=1)
     model = Model(Ipopt.Optimizer)
@@ -409,6 +419,11 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
 end
 
 function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, N::Int, p_0::Vector{Float64}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[])
+    if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
+        nonzero = sum(M; dims=2)[:] .> 0
+        q = q[nonzero]
+        M = M[nonzero, :]
+    end
     F, C = size(M) # the numbers of features and classes
     p_est = zeros(C) # the estimate
     for _ ∈ 1:100

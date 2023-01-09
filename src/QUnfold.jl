@@ -78,23 +78,27 @@ _solve(m::AbstractMethod, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{
 Return a copy of the QUnfold method `m` that is fitted to the data set `(X, y)`.
 """
 function fit(m::AbstractMethod, X::Any, y::AbstractVector{T}) where {T <: Integer}
+    y, C = _sanitize_labels(y)
     f, fX, fy = _fit_transform(_transformer(m), X, y) # f(x) for x ∈ X
-    M, p_trn = _estimate_M(fX, fy, unique(y))
-    return FittedMethod(m, M, f, p_trn) # normalize M
-end
-
-function _estimate_M(fX::AbstractMatrix{T}, fy::AbstractVector{I}, classes::AbstractVector{I}) where {T<:Real, I<:Integer}
-    if minimum(classes) == 0
-        fy .+= 1
-    elseif minimum(classes) != 1
-        @error "minimum(y) ∉ [0, 1]"
-    end
-    M = zeros(size(fX, 2), length(classes)) # (n_features, n_classes)
+    M = zeros(size(fX, 2), C) # (n_features, n_classes)
     for (fX_i, fy_i) in zip(eachrow(fX), fy)
         M[:, fy_i] .+= fX_i # one histogram of f(X) per class
     end
     p_trn = sum(M; dims=1)[:] / sum(M)
-    return M ./ sum(M; dims=1), p_trn # = (M, p_trn)
+    return FittedMethod(m, M ./ sum(M; dims=1), f, p_trn) # normalize M
+end
+
+function _sanitize_labels(y::AbstractVector{T}) where {T <: Integer}
+    if minimum(y) == 0
+        y .+= 1
+    elseif minimum(y) != 1
+        @error "minimum(y) ∉ [0, 1]"
+    end
+    labels = sort(unique(y))
+    if labels != 1:maximum(y)
+        @error "Not all labels between minimum(y) and maximum(y) are present"
+    end
+    return y, length(labels) # = (y, C)
 end
 
 """
@@ -231,6 +235,11 @@ _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, 
     if m.strategy ∈ [:constrained, :softmax, :softmax_reg, :softmax_full_reg]
         solve_least_squares(M, q, N; τ=m.τ, a=m.a, strategy=m.strategy)
     elseif m.strategy == :pinv
+        if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
+            nonzero = sum(M; dims=2)[:] .> 0
+            q = q[nonzero]
+            M = M[nonzero, :]
+        end
         clip_and_normalize(pinv(M) * q)
     elseif m.strategy == :inv
         clip_and_normalize(inv(M) * q)
@@ -452,9 +461,10 @@ struct SLD <: AbstractMethod
         new(classifier, o, λ, a, fit_classifier)
 end
 function fit(m::SLD, X::Any, y::AbstractVector{T}) where {T <: Integer}
+    y, C = _sanitize_labels(y)
     t = ClassTransformer(m.classifier; is_probabilistic=true, fit_classifier=m.fit_classifier)
     f = _fit_transform(t, X, y)[1]
-    p_trn = [ mean(y .== i) for i ∈ 1:length(unique(y)) ]
+    p_trn = [ mean(y .== i) for i ∈ 1:C ]
     return FittedMethod(m, Matrix{Float64}(undef, 0, 0), f, p_trn)
 end
 predict(m::FittedMethod{SLD,FittedClassTransformer}, X::Any) =

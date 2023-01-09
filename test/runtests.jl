@@ -64,37 +64,30 @@ def paccPteCondEstim(classes, y, y_):
     y_oob = mapslices(argmax, c.oob_decision_function_; dims=2)[:]
     @info "OOB predictions" mean(y_trn .== y_oob)
 
-    acc = ACC(c; fit_classifier=false)
-    _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(acc), X_trn, y_trn)
-    M_acc = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
+    M_acc = QUnfold.fit(ACC(c; fit_classifier=false), X_trn, y_trn).M
     M_acc_quapy = py"accPteCondEstim"(1:3, y_trn, y_oob)
     @test M_acc ≈ M_acc_quapy
 
-    pacc = PACC(c; fit_classifier=false)
-    _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(pacc), X_trn, y_trn)
-    M_pacc = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
+    M_pacc = QUnfold.fit(PACC(c; fit_classifier=false), X_trn, y_trn).M
     M_pacc_quapy = py"paccPteCondEstim"(1:3, y_trn, c.oob_decision_function_)
 
     # repeat the PACC test with a sparse scipy matrix
     X_sparse = pyimport_conda("scipy.sparse", "scipy").csc_matrix(X_trn)
-    _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(pacc), X_sparse, y_trn)
-    M_sparse = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
+    M_sparse = QUnfold.fit(PACC(c; fit_classifier=false), X_sparse, y_trn).M
 
     # repeat the PACC test with minimum(y) == 0
-    y_zero = y_trn .- 1
-    _, fX, fy = QUnfold._fit_transform(QUnfold._transformer(pacc), X_trn, y_zero)
-    M_zero = QUnfold._estimate_M(fX, fy, unique(y_zero))[1]
+    M_zero = QUnfold.fit(PACC(c; fit_classifier=false), X_trn, y_trn .- 1).M
     @test M_pacc ≈ M_pacc_quapy
     @test M_pacc ≈ M_sparse
     @test M_pacc ≈ M_zero
 
     # call other transformers
-    f, fX, fy = QUnfold._fit_transform(QUnfold.HistogramTransformer(2), X_trn, y_trn)
-    M_hist = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
+    M_hist = QUnfold.fit(RUN(QUnfold.HistogramTransformer(2)), X_trn, y_trn).M
+    @test size(M_hist) == (4, 3) # 4 = 2 bins * 2 features
 
-    f, fX, fy = QUnfold._fit_transform(QUnfold.TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9)), X_trn, y_trn)
-    M_tree = QUnfold._estimate_M(fX, fy, unique(y_trn))[1]
-    @info "M" M_acc M_pacc M_hist M_tree mean(y_trn .== ScikitLearn.predict(f.tree, X_trn))
+    m = QUnfold.fit(RUN(QUnfold.TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9))), X_trn, y_trn)
+    @test size(m.M) == (9, 3)
+    @test mean(y_trn .== ScikitLearn.predict(m.f.tree, X_trn)) > 0.5
 end # testset
 
 @testset "Execution of all methods" begin
@@ -120,7 +113,6 @@ end # testset
             "ACC (softmax_reg)" => ACC(c; strategy=:softmax_reg),
             "ACC (softmax_full_reg)" => ACC(c; strategy=:softmax_full_reg),
             "ACC (pinv)" => ACC(c; strategy=:pinv),
-            "ACC (inv)" => ACC(c; strategy=:inv),
             "CC" => CC(c),
             "o-PACC (constrained, τ=10.0)" => PACC(c; τ=10.0, strategy=:constrained),
             "PACC (constrained)" => PACC(c; strategy=:constrained),
@@ -128,7 +120,6 @@ end # testset
             "PACC (softmax_reg)" => PACC(c; strategy=:softmax_reg),
             "PACC (softmax_full_reg)" => PACC(c; strategy=:softmax_full_reg),
             "PACC (pinv)" => PACC(c; strategy=:pinv),
-            "PACC (inv)" => PACC(c; strategy=:inv),
             "PCC" => PCC(c),
             "RUN (constrained, τ=1e-6)" => RUN(t; strategy=:constrained, τ=1e-6),
             "RUN (softmax, τ=1e-6)" => RUN(t; strategy=:softmax, τ=1e-6),
@@ -153,8 +144,8 @@ end # testset
             "HDx (softmax_full_reg)" => HDx(3; strategy=:softmax_full_reg),
             "o-HDy (constrained, τ=10.0)" => HDy(c, 3; τ=10.0, strategy=:constrained),
             "HDy (constrained)" => HDy(c, 3; strategy=:constrained),
-            "HDy (softmax)" => HDy(c, 3; strategy=:softmax),
             "HDy (softmax_reg)" => HDy(c, 3; strategy=:softmax_reg),
+            "HDy (softmax)" => HDy(c, 3; strategy=:softmax),
             "HDy (softmax_full_reg)" => HDy(c, 3; strategy=:softmax_full_reg),
             "RUN (original, n_df=2)" => RUN(t; strategy=:original, n_df=2),
             "SVD (original, n_df=2)" => QUnfold.SVD(t; strategy=:original, n_df=2),
@@ -162,9 +153,17 @@ end # testset
             "o-SLD (o=0, λ=1.)" => SLD(c; o=0, λ=1.),
             # "RUN (unconstrained, τ=10.0)" => RUN(t; strategy=:unconstrained, τ=10.0),
         ]
-        p_hat = QUnfold.predict(QUnfold.fit(method, X_trn, y_trn), X_tst)
+        m = QUnfold.fit(method, X_trn, y_trn)
+        m_zero = QUnfold.fit(method, X_trn, y_trn .- 1)
+        @test m.M == m_zero.M
+        if !(typeof(m) <: QUnfold.FittedMethod{QUnfold.SLD,QUnfold.FittedClassTransformer})
+            q = mean(QUnfold._transform(m.f, X_tst), dims=1)[:]
+            q_zero = mean(QUnfold._transform(m_zero.f, X_tst), dims=1)[:]
+            @test q == q_zero
+        end
+        p_hat = QUnfold.predict(m, X_tst)
         @info name p_hat
-        @test p_hat ≈ QUnfold.predict(QUnfold.fit(method, X_trn, y_trn .- 1), X_tst) atol=0.2
+        @test p_hat ≈ QUnfold.predict(m_zero, X_tst) atol=0.1
     end
 
     # @test x_data[1] == x_data[2]
