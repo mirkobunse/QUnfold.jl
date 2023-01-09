@@ -8,8 +8,7 @@ end
 Base.showerror(io::IO, x::NonOptimalStatusError) =
     print(io, "NonOptimalStatusError(", x.termination_status, ")")
 
-function _check_termination_status(model::Model, loss::Symbol, strategy::Symbol, M::Matrix{Float64}, q::Vector{Float64})
-    status = termination_status(model)
+function _check_termination_status(status::TerminationStatusCode, loss::Symbol, strategy::Symbol, M::Matrix{Float64}, q::Vector{Float64})
     if status == INTERRUPTED
         throw(InterruptException())
     elseif status ∉ [LOCALLY_SOLVED, OPTIMAL, ALMOST_LOCALLY_SOLVED, ALMOST_OPTIMAL, ITERATION_LIMIT, NUMERICAL_ERROR]
@@ -134,7 +133,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
 
     # solve and return
     optimize!(model)
-    _check_termination_status(model, :least_squares, strategy, M, q)
+    _check_termination_status(termination_status(model), :least_squares, strategy, M, q)
     if strategy in [:softmax, :softmax_reg]
         exp_l = vcat(exp.(value.(l)), 1)
         return exp_l ./ sum(exp_l)
@@ -280,7 +279,7 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
 
     # solve and return
     optimize!(model)
-    _check_termination_status(model, :maximum_likelihood, strategy, M, q)
+    _check_termination_status(termination_status(model), :maximum_likelihood, strategy, M, q)
     if strategy in [:softmax, :softmax_reg]
         exp_l = vcat(exp.(value.(l)), 1)
         return exp_l ./ sum(exp_l)
@@ -310,7 +309,7 @@ function _select_τ(n_df::Number, eigvals_T::Vector{Float64}, min::Float64=-12.0
 end
 
 
-function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int, n_bins::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, λ::Float64=1e-6)
+function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int, n_bins::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, λ::Float64=1e-6, n_trials=10)
     _check_solver_args(M, q)
     indices = [ (1+(i-1)*n_bins):(i*n_bins) for i in 1:Int(size(M, 1) / n_bins) ]
     if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
@@ -384,38 +383,38 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         + softmax_regularizer # optional soft-max regularization
     )
 
-    # solve and return
-    i_trial = 1
-    while true
+    # solve: HD requires multiple trials because derivatives are not globally defined
+    best_p = (Inf, Float64[])
+    first_p = Inf # just for logging the improvement
+    for i_trial in 1:n_trials
+        if strategy in [:softmax, :softmax_reg]
+            set_start_value.(l, rand(C-1) .* 2 .- 1)
+        elseif strategy == :softmax_full_reg
+            set_start_value.(l, rand(C) .* 2 .- 1)
+        elseif strategy == :constrained
+            p_0 = rand(C)
+            set_start_value.(p, p_0 ./ sum(p_0))
+        end
         optimize!(model)
-        if termination_status(model) == INVALID_MODEL && i_trial < 10
+        if termination_status(model) != INVALID_MODEL
+            _check_termination_status(termination_status(model), :hellinger_distance, strategy, M, q)
+        end # otherwise, continue with an INVALID_MODEL result
+        if objective_value(model) < best_p[1]
             if strategy in [:softmax, :softmax_reg]
-                set_start_value.(l, rand(C-1) .* 2 .- 1)
+                exp_l = vcat(exp.(value.(l)), 1)
+                best_p = (objective_value(model), exp_l ./ sum(exp_l))
             elseif strategy == :softmax_full_reg
-                set_start_value.(l, rand(C) .* 2 .- 1)
+                best_p = (objective_value(model), exp.(value.(l)) ./ sum(exp.(value.(l))))
             elseif strategy == :constrained
-                p_0 = rand(C)
-                set_start_value.(p, p_0 ./ sum(p_0))
+                best_p = (objective_value(model), value.(p))
             end
-            i_trial += 1
-        else
-            break
+        end
+        if i_trial == 1
+            first_p = objective_value(model)
         end
     end
-    if i_trial > 1
-        @debug "hellinger_distance is valid in trial $(i_trial)"
-    end
-    if termination_status(model) != INVALID_MODEL
-        _check_termination_status(model, :hellinger_distance, strategy, M, q)
-    end # otherwise, just return an INVALID_MODEL result
-    if strategy in [:softmax, :softmax_reg]
-        exp_l = vcat(exp.(value.(l)), 1)
-        return exp_l ./ sum(exp_l)
-    elseif strategy == :softmax_full_reg
-        return exp.(value.(l)) ./ sum(exp.(value.(l)))
-    elseif strategy == :constrained
-        return value.(p)
-    end
+    @debug "hellinger_distance ($strategy)" best_p[1] first_p
+    return best_p[2]
 end
 
 function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, N::Int, p_0::Vector{Float64}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[])

@@ -90,81 +90,83 @@ def paccPteCondEstim(classes, y, y_):
     @test mean(y_trn .== ScikitLearn.predict(m.f.tree, X_trn)) > 0.5
 end # testset
 
-@testset "Execution of all methods" begin
-    M = diagm(
-        0 => rand(3) * .7 .+ .1,
-        1 => rand(2) * .05 .+ .025,
-        -1 => rand(2) * .05 .+ .025,
-        2 => rand(1) * .025,
-        -2 => rand(1) * .025
-    )
-    M ./= sum(M, dims=2)
-    X_trn, y_trn = generate_data([1, 2, 3], M)
-    X_tst, y_tst = generate_data([3, 2, 1], M)
-    p_tst = StatsBase.fit(Histogram, y_tst, 1:4).weights / length(y_tst)
-    @info "Artificial quantification task " M p_tst
-
-    c = RandomForestClassifier(; oob_score=true, random_state=rand(UInt32))
-    t = TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32)))
-    for (name, method) in [
-            "o-ACC (constrained, τ=10.0)" => ACC(c; τ=10.0, strategy=:constrained),
-            "ACC (constrained)" => ACC(c; strategy=:constrained),
-            "ACC (softmax)" => ACC(c; strategy=:softmax),
-            "ACC (softmax_reg)" => ACC(c; strategy=:softmax_reg),
-            "ACC (softmax_full_reg)" => ACC(c; strategy=:softmax_full_reg),
-            "ACC (pinv)" => ACC(c; strategy=:pinv),
-            "CC" => CC(c),
-            "o-PACC (constrained, τ=10.0)" => PACC(c; τ=10.0, strategy=:constrained),
-            "PACC (constrained)" => PACC(c; strategy=:constrained),
-            "PACC (softmax)" => PACC(c; strategy=:softmax),
-            "PACC (softmax_reg)" => PACC(c; strategy=:softmax_reg),
-            "PACC (softmax_full_reg)" => PACC(c; strategy=:softmax_full_reg),
-            "PACC (pinv)" => PACC(c; strategy=:pinv),
-            "PCC" => PCC(c),
-            "RUN (constrained, τ=1e-6)" => RUN(t; strategy=:constrained, τ=1e-6),
-            "RUN (softmax, τ=1e-6)" => RUN(t; strategy=:softmax, τ=1e-6),
-            "RUN (softmax_reg, τ=1e-6)" => RUN(t; strategy=:softmax_reg, τ=1e-6),
-            "RUN (softmax_full_reg, τ=1e-6)" => RUN(t; strategy=:softmax_full_reg, τ=1e-6),
-            "RUN (constrained, τ=10.0)" => RUN(t; strategy=:constrained, τ=10.0),
-            "RUN (softmax, τ=10.0)" => RUN(t; strategy=:softmax, τ=10.0),
-            "RUN (softmax_reg, τ=10.0)" => RUN(t; strategy=:softmax_reg, τ=10.0),
-            "RUN (softmax_full_reg, τ=10.0)" => RUN(t; strategy=:softmax_full_reg, τ=10.0),
-            "SVD (constrained, τ=1e-6)" => QUnfold.SVD(t; strategy=:constrained, τ=1e-6),
-            "SVD (softmax, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax, τ=1e-6),
-            "SVD (softmax_reg, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax_reg, τ=1e-6),
-            "SVD (softmax_full_reg, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax_full_reg, τ=1e-6),
-            "SVD (constrained, τ=10.0)" => QUnfold.SVD(t; strategy=:constrained, τ=10.0),
-            "SVD (softmax, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax, τ=10.0),
-            "SVD (softmax_reg, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax_reg, τ=10.0),
-            "SVD (softmax_full_reg, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax_full_reg, τ=10.0),
-            "o-HDx (constrained, τ=10.0)" => HDx(3; τ=10.0, strategy=:constrained),
-            "HDx (constrained)" => HDx(15; strategy=:constrained),
-            "HDx (softmax)" => HDx(3; strategy=:softmax),
-            "HDx (softmax_reg)" => HDx(3; strategy=:softmax_reg),
-            "HDx (softmax_full_reg)" => HDx(3; strategy=:softmax_full_reg),
-            "o-HDy (constrained, τ=10.0)" => HDy(c, 3; τ=10.0, strategy=:constrained),
-            "HDy (constrained)" => HDy(c, 3; strategy=:constrained),
-            "HDy (softmax_reg)" => HDy(c, 3; strategy=:softmax_reg),
-            "HDy (softmax)" => HDy(c, 3; strategy=:softmax),
-            "HDy (softmax_full_reg)" => HDy(c, 3; strategy=:softmax_full_reg),
-            "RUN (original, n_df=2)" => RUN(t; strategy=:original, n_df=2),
-            "SVD (original, n_df=2)" => QUnfold.SVD(t; strategy=:original, n_df=2),
-            "IBU (o=0, λ=1.)" => IBU(t; o=0, λ=1.),
-            "o-SLD (o=0, λ=1.)" => SLD(c; o=0, λ=1.),
-            # "RUN (unconstrained, τ=10.0)" => RUN(t; strategy=:unconstrained, τ=10.0),
+Random.seed!(42)
+c = RandomForestClassifier(; oob_score=true, random_state=rand(UInt32))
+t = TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32)))
+for (name, method) in [
+        "o-ACC (constrained, τ=10.0)" => ACC(c; τ=10.0, strategy=:constrained),
+        "ACC (constrained)" => ACC(c; strategy=:constrained),
+        "ACC (softmax)" => ACC(c; strategy=:softmax),
+        "ACC (softmax_reg)" => ACC(c; strategy=:softmax_reg),
+        "ACC (softmax_full_reg)" => ACC(c; strategy=:softmax_full_reg),
+        "ACC (pinv)" => ACC(c; strategy=:pinv),
+        "CC" => CC(c),
+        "o-PACC (constrained, τ=10.0)" => PACC(c; τ=10.0, strategy=:constrained),
+        "PACC (constrained)" => PACC(c; strategy=:constrained),
+        "PACC (softmax)" => PACC(c; strategy=:softmax),
+        "PACC (softmax_reg)" => PACC(c; strategy=:softmax_reg),
+        "PACC (softmax_full_reg)" => PACC(c; strategy=:softmax_full_reg),
+        "PACC (pinv)" => PACC(c; strategy=:pinv),
+        "PCC" => PCC(c),
+        "RUN (constrained, τ=1e-6)" => RUN(t; strategy=:constrained, τ=1e-6),
+        "RUN (softmax, τ=1e-6)" => RUN(t; strategy=:softmax, τ=1e-6),
+        "RUN (softmax_reg, τ=1e-6)" => RUN(t; strategy=:softmax_reg, τ=1e-6),
+        "RUN (softmax_full_reg, τ=1e-6)" => RUN(t; strategy=:softmax_full_reg, τ=1e-6),
+        "RUN (constrained, τ=10.0)" => RUN(t; strategy=:constrained, τ=10.0),
+        "RUN (softmax, τ=10.0)" => RUN(t; strategy=:softmax, τ=10.0),
+        "RUN (softmax_reg, τ=10.0)" => RUN(t; strategy=:softmax_reg, τ=10.0),
+        "RUN (softmax_full_reg, τ=10.0)" => RUN(t; strategy=:softmax_full_reg, τ=10.0),
+        "SVD (constrained, τ=1e-6)" => QUnfold.SVD(t; strategy=:constrained, τ=1e-6),
+        "SVD (softmax, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax, τ=1e-6),
+        "SVD (softmax_reg, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax_reg, τ=1e-6),
+        "SVD (softmax_full_reg, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax_full_reg, τ=1e-6),
+        "SVD (constrained, τ=10.0)" => QUnfold.SVD(t; strategy=:constrained, τ=10.0),
+        "SVD (softmax, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax, τ=10.0),
+        "SVD (softmax_reg, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax_reg, τ=10.0),
+        "SVD (softmax_full_reg, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax_full_reg, τ=10.0),
+        "o-HDx (constrained, τ=10.0)" => HDx(3; τ=10.0, strategy=:constrained),
+        "HDx (softmax_reg)" => HDx(3; strategy=:softmax_reg),
+        "HDx (softmax_full_reg)" => HDx(3; strategy=:softmax_full_reg),
+        "HDx (constrained)" => HDx(15; strategy=:constrained),
+        "HDx (softmax)" => HDx(3; strategy=:softmax),
+        "o-HDy (constrained, τ=10.0)" => HDy(c, 3; τ=10.0, strategy=:constrained),
+        "HDy (softmax_reg)" => HDy(c, 3; strategy=:softmax_reg),
+        "HDy (softmax_full_reg)" => HDy(c, 3; strategy=:softmax_full_reg),
+        "HDy (constrained)" => HDy(c, 3; strategy=:constrained),
+        "HDy (softmax)" => HDy(c, 3; strategy=:softmax),
+        "RUN (original, n_df=2)" => RUN(t; strategy=:original, n_df=2),
+        "SVD (original, n_df=2)" => QUnfold.SVD(t; strategy=:original, n_df=2),
+        "IBU (o=0, λ=1.)" => IBU(t; o=0, λ=1.),
+        "o-SLD (o=0, λ=1.)" => SLD(c; o=0, λ=1.),
         ]
-        m = QUnfold.fit(method, X_trn, y_trn)
-        m_zero = QUnfold.fit(method, X_trn, y_trn .- 1)
-        @test m.M == m_zero.M
-        if !(typeof(m) <: QUnfold.FittedMethod{QUnfold.SLD,QUnfold.FittedClassTransformer})
+    @testset "$name" begin
+        Random.seed!(42) # each method gets the same 10 trials
+        mae = Float64[] # mean absolute error over all trials
+        for trial_seed in rand(UInt32, 10)
+            Random.seed!(trial_seed)
+            M = diagm( # construct and artificial quantification task
+                0 => rand(3) * .7 .+ .1,
+                1 => rand(2) * .05 .+ .025,
+                -1 => rand(2) * .05 .+ .025,
+                2 => rand(1) * .025,
+                -2 => rand(1) * .025
+            )
+            M ./= sum(M, dims=2)
+            X_trn, y_trn = generate_data([1, 2, 3], M)
+            X_tst, y_tst = generate_data([3, 2, 1], M)
+            p_tst = StatsBase.fit(Histogram, y_tst, 1:4).weights / length(y_tst)
+
+            m = QUnfold.fit(method, X_trn, y_trn)
+            m_zero = QUnfold.fit(method, X_trn, y_trn .- 1)
+            @test m.M == m_zero.M
             q = mean(QUnfold._transform(m.f, X_tst), dims=1)[:]
             q_zero = mean(QUnfold._transform(m_zero.f, X_tst), dims=1)[:]
             @test q == q_zero
+            p_hat = QUnfold.predict(m, X_tst)
+            @debug name p_hat
+            @test p_hat ≈ QUnfold.predict(m_zero, X_tst) atol=0.1
+            push!(mae, sum(abs.(p_hat .- p_tst)))
         end
-        p_hat = QUnfold.predict(m, X_tst)
-        @info name p_hat
-        @test p_hat ≈ QUnfold.predict(m_zero, X_tst) atol=0.1
-    end
-
-    # @test x_data[1] == x_data[2]
-end # testset
+        @info "MAE of $name: $(mean(mae))"
+    end # testset
+end # for (name, method)
