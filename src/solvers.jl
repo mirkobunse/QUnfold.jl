@@ -8,12 +8,13 @@ end
 Base.showerror(io::IO, x::NonOptimalStatusError) =
     print(io, "NonOptimalStatusError(", x.termination_status, ")")
 
-function _check_termination_status(model::Model, loss::Symbol, strategy::Symbol)
+function _check_termination_status(model::Model, loss::Symbol, strategy::Symbol, M::Matrix{Float64}, q::Vector{Float64})
     status = termination_status(model)
     if status == INTERRUPTED
         throw(InterruptException())
     elseif status ∉ [LOCALLY_SOLVED, OPTIMAL, ALMOST_LOCALLY_SOLVED, ALMOST_OPTIMAL, ITERATION_LIMIT, NUMERICAL_ERROR]
         @error "Non-optimal status after optimization" loss strategy status
+        println("M = $M\nq = $q")
         throw(NonOptimalStatusError(status))
     end
 end
@@ -128,7 +129,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
 
     # solve and return
     optimize!(model)
-    _check_termination_status(model, :least_squares, strategy)
+    _check_termination_status(model, :least_squares, strategy, M, q)
     if strategy in [:softmax, :softmax_reg]
         exp_l = vcat(exp.(value.(l)), 1)
         return exp_l ./ sum(exp_l)
@@ -268,7 +269,7 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
 
     # solve and return
     optimize!(model)
-    _check_termination_status(model, :maximum_likelihood, strategy)
+    _check_termination_status(model, :maximum_likelihood, strategy, M, q)
     if strategy in [:softmax, :softmax_reg]
         exp_l = vcat(exp.(value.(l)), 1)
         return exp_l ./ sum(exp_l)
@@ -395,7 +396,7 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         @debug "hellinger_distance is valid in trial $(i_trial)"
     end
     if termination_status(model) != INVALID_MODEL
-        _check_termination_status(model, :hellinger_distance, strategy)
+        _check_termination_status(model, :hellinger_distance, strategy, M, q)
     end # otherwise, just return an INVALID_MODEL result
     if strategy in [:softmax, :softmax_reg]
         exp_l = vcat(exp.(value.(l)), 1)
