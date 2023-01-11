@@ -12,11 +12,13 @@ A detailed [documentation](https://mirkobunse.github.io/QUnfold.jl/dev) is avail
 
 ```julia
 using QUnfold, ScikitLearn
-@sk_import linear_model: LogisticRegression
+@sk_import ensemble: RandomForestClassifier
 
 # X_trn, y_trn = my_training_data(...)
 
-acc = ACC(LogisticRegression())
+acc = ACC( # a scikit-learn bagging classifier with oob_score is needed
+    RandomForestClassifier(oob_score=true)
+)
 trained_acc = fit(acc, X_trn, y_trn) # fit returns a trained COPY
 
 # X_tst = my_testing_data(...)
