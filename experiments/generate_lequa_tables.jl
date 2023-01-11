@@ -16,8 +16,9 @@ extract_order(x) = Dict(
         "pinv" => 4,
         "constrained" => 5,
         "softmax" => 6,
-        "softmax reg." => 7,
-        "softmax full reg." => 8,
+        "softmax; Python" => 7,
+        "softmax reg." => 8,
+        "softmax full reg." => 9,
     )[x[2]]
 
 extract_adjustment(x) = Dict(
@@ -28,6 +29,7 @@ extract_adjustment(x) = Dict(
         "pinv" => "pseudo-inverse (Eq.~\\ref{eq:pinv})",
         "constrained" => "constrained (Eq.~\\ref{eq:constrained})",
         "softmax" => "soft-max with \$[\\vec{l}\\,]_C = 0, \\lambda=0\$",
+        "softmax; Python" => "soft-max with \$[\\vec{l}\\,]_C = 0, \\lambda=0\$ (Python)",
         "softmax reg." => "soft-max with \$[\\vec{l}\\,]_C = 0, \\lambda=10^{-6}\$",
         "softmax full reg." => "soft-max with \$[\\vec{l}\\,]_C \\in \\mathbb{R}, \\lambda=10^{-6}\$ (Eq.~\\ref{eq:softmax})",
     )[x[2]]
