@@ -149,14 +149,15 @@ qunfold = pyimport_e("qunfold")
 if ispynull(qunfold) # need to install qunfold?
     Conda.pip_interop(true)
     Conda.pip("install", "qunfold @ git+https://github.com/mirkobunse/qunfold")
+    Conda.pip("install", "jax[cpu]")
     qunfold = pyimport("qunfold")
 end
 
 function QUnfold.fit(m::_PythonACC, X::Any, y::AbstractVector{T}) where {T <: Integer}
     quantifier = if m.is_probabilistic
-        qunfold.ACC(m.classifier, fit_classifier=m.fit_classifier, verbose=true)
+        qunfold.ACC(m.classifier, fit_classifier=m.fit_classifier)
     else
-        qunfold.PACC(m.classifier, fit_classifier=m.fit_classifier, verbose=true)
+        qunfold.PACC(m.classifier, fit_classifier=m.fit_classifier)
     end
     return _FittedPythonACC(quantifier.fit(X, y))
 end
