@@ -2,6 +2,7 @@ if ".." ∉ LOAD_PATH push!(LOAD_PATH, "..") end # add QUnfold to the LOAD_PATH
 ENV["PYTHONWARNINGS"] = "ignore"
 using
     ArgParse,
+    Conda,
     CSV,
     DataFrames,
     DelimitedFiles,
@@ -29,7 +30,7 @@ read_prevalences(path) = readdlm(path, ',', '\n'; skipstart=1)[:, 2:end]
 read_sample(index, dir) = readdlm("$(dir)/$(index).txt", ',', '\n'; skipstart=1)
 
 
-# utilities QuaPy wrappers
+# utilities for QuaPy wrappers
 
 abstract type _QuaPyMethod <: QUnfold.AbstractMethod end
 
@@ -130,6 +131,38 @@ function QUnfold.fit(m::_QuaPyACC, X::Any, y::AbstractVector{T}) where {T <: Int
 end
 
 
+# qunfold Python ACC / PACC (https://github.com/mirkobunse/qunfold)
+
+struct _PythonACC <: QUnfold.AbstractMethod
+    classifier::Any
+    is_probabilistic::Bool
+    fit_classifier::Bool
+end
+PythonACC(c::Any; fit_classifier::Bool=true) = _PythonACC(c, false, fit_classifier)
+PythonPACC(c::Any; fit_classifier::Bool=true) = _PythonACC(c, true, fit_classifier)
+
+struct _FittedPythonACC
+    quantifier::PyObject
+end
+
+qunfold = pyimport_e("qunfold")
+if ispynull(qunfold) # need to install qunfold?
+    Conda.pip_interop(true)
+    Conda.pip("install", "qunfold @ git+https://github.com/mirkobunse/qunfold")
+    qunfold = pyimport("qunfold")
+end
+
+function QUnfold.fit(m::_PythonACC, X::Any, y::AbstractVector{T}) where {T <: Integer}
+    quantifier = if m.is_probabilistic
+        qunfold.ACC(m.classifier, fit_classifier=m.fit_classifier, verbose=true)
+    else
+        qunfold.PACC(m.classifier, fit_classifier=m.fit_classifier, verbose=true)
+    end
+    return _FittedPythonACC(quantifier.fit(X, y))
+end
+QUnfold.predict(m::_FittedPythonACC, X::Any) = m.quantifier.predict(X)
+
+
 # evaluation (https://github.com/HLT-ISTI/LeQua2022_scripts/blob/main/evaluate.py#L46)
 
 _smooth(p::Vector{Float64}, ϵ::Float64) = (p .+ ϵ) ./ (1 + ϵ * length(p))
@@ -207,10 +240,12 @@ function main(;
             [ # constrained strategy included for reference
                 "ACC (constrained)" => ACC(c; strategy=:constrained, fit_classifier=false),
                 "ACC (softmax)" => ACC(c; strategy=:softmax, fit_classifier=false),
+                "ACC (softmax; Python)" => PythonACC(c; fit_classifier=false),
                 "ACC (softmax reg.)" => ACC(c; strategy=:softmax_reg, fit_classifier=false),
                 "ACC (softmax full reg.)" => ACC(c; strategy=:softmax_full_reg, fit_classifier=false),
                 "PACC (constrained)" => PACC(c; strategy=:constrained, fit_classifier=false),
                 "PACC (softmax)" => PACC(c; strategy=:softmax, fit_classifier=false),
+                "PACC (softmax; Python)" => PythonPACC(c; fit_classifier=false),
                 "PACC (softmax reg.)" => PACC(c; strategy=:softmax_reg, fit_classifier=false),
                 "PACC (softmax full reg.)" => PACC(c; strategy=:softmax_full_reg, fit_classifier=false),
             ]
