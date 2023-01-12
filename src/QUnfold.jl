@@ -78,27 +78,13 @@ _solve(m::AbstractMethod, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{
 Return a copy of the QUnfold method `m` that is fitted to the data set `(X, y)`.
 """
 function fit(m::AbstractMethod, X::Any, y::AbstractVector{T}) where {T <: Integer}
-    y, C = _sanitize_labels(y)
     f, fX, fy = _fit_transform(_transformer(m), X, y) # f(x) for x ∈ X
-    M = zeros(size(fX, 2), C) # (n_features, n_classes)
+    M = zeros(size(fX, 2), _n_classes(f)) # (n_features, n_classes)
     for (fX_i, fy_i) in zip(eachrow(fX), fy)
         M[:, fy_i] .+= fX_i # one histogram of f(X) per class
     end
     p_trn = sum(M; dims=1)[:] / sum(M)
     return FittedMethod(m, M ./ sum(M; dims=1), f, p_trn) # normalize M
-end
-
-function _sanitize_labels(y::AbstractVector{T}) where {T <: Integer}
-    if minimum(y) == 0
-        y = y .+ 1
-    elseif minimum(y) != 1
-        @error "minimum(y) ∉ [0, 1]"
-    end
-    labels = sort(unique(y))
-    if labels != 1:maximum(y)
-        @error "Not all labels between minimum(y) and maximum(y) are present"
-    end
-    return y, length(labels) # = (y, C)
 end
 
 """
@@ -461,10 +447,9 @@ struct SLD <: AbstractMethod
         new(classifier, o, λ, a, fit_classifier)
 end
 function fit(m::SLD, X::Any, y::AbstractVector{T}) where {T <: Integer}
-    y, C = _sanitize_labels(y)
     t = ClassTransformer(m.classifier; is_probabilistic=true, fit_classifier=m.fit_classifier)
-    f = _fit_transform(t, X, y)[1]
-    p_trn = [ mean(y .== i) for i ∈ 1:C ]
+    f = _fit_transform(t, X, y)[1] # ensures that minimum(y) ∈ [0, 1]
+    p_trn = [ mean((y .+ (1 - minimum(y))) .== i) for i ∈ 1:_n_classes(f) ]
     return FittedMethod(m, Matrix{Float64}(undef, 0, 0), f, p_trn)
 end
 predict(m::FittedMethod{SLD,FittedClassTransformer}, X::Any) =

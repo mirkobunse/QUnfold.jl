@@ -76,10 +76,15 @@ def paccPteCondEstim(classes, y, y_):
     M_sparse = QUnfold.fit(PACC(c; fit_classifier=false), X_sparse, y_trn).M
 
     # repeat the PACC test with minimum(y) == 0
-    M_zero = QUnfold.fit(PACC(c; fit_classifier=false), X_trn, y_trn .- 1).M
+    y_trn .-= 1 # go to a zero-based labeling
+    ScikitLearn.fit!(c, X_trn, y_trn)
+    M_zero = QUnfold.fit(PACC(c; fit_classifier=false), X_trn, y_trn).M
     @test M_pacc ≈ M_pacc_quapy
     @test M_pacc ≈ M_sparse
     @test M_pacc ≈ M_zero
+    @test minimum(y_trn) == 0 # check that QUnfold.fit does not update in-place
+    y_trn .+= 1 # recover the usual one-based labeling
+    ScikitLearn.fit!(c, X_trn, y_trn)
 
     # call other transformers
     M_hist = QUnfold.fit(RUN(QUnfold.HistogramTransformer(2)), X_trn, y_trn).M
@@ -87,7 +92,20 @@ def paccPteCondEstim(classes, y, y_):
 
     m = QUnfold.fit(RUN(QUnfold.TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9))), X_trn, y_trn)
     @test size(m.M) == (9, 3)
+    @test mean(y_trn .== ScikitLearn.predict(m.f.tree, X_trn)) > 0.5 # weak learning test
+
+    # repeat the tests of other transformers with minimum(y) == 0
+    y_trn .-= 1
+    M_hist_zero = QUnfold.fit(RUN(QUnfold.HistogramTransformer(2)), X_trn, y_trn).M
+    @test size(M_hist_zero) == (4, 3)
+    @test all(sum(M_hist_zero; dims=2) .> 0) # test that no class is missing
+    @test minimum(y_trn) == 0
+
+    m = QUnfold.fit(RUN(QUnfold.TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9))), X_trn, y_trn)
+    @test size(m.M) == (9, 3)
     @test mean(y_trn .== ScikitLearn.predict(m.f.tree, X_trn)) > 0.5
+    @test all(sum(m.M; dims=2) .> 0)
+    @test minimum(y_trn) == 0
 end # testset
 
 Random.seed!(42)
@@ -159,6 +177,7 @@ for (name, method) in [
             m = QUnfold.fit(method, X_trn, y_trn)
             m_zero = QUnfold.fit(method, X_trn, y_trn .- 1)
             @test m.M == m_zero.M
+            @test all(sum(m.M; dims=2) .> 0) # test that no class is missing
             q = mean(QUnfold._transform(m.f, X_tst), dims=1)[:]
             q_zero = mean(QUnfold._transform(m_zero.f, X_tst), dims=1)[:]
             @test q == q_zero

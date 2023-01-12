@@ -8,7 +8,7 @@ abstract type FittedTransformer end
 """
     _fit_transform(t, X, y) -> (f, fX, fy)
 
-Return a copy `f` of the Transformer `t` that is fitted to the data set `(X, y)`.
+Return a copy `f` of the transformer `t` that is fitted to the data set `(X, y)`.
 Also return the transformation of `X` and the sample of `y` which has been left
 out for the computation of the transfer matrix `M`.
 """
@@ -18,10 +18,18 @@ _fit_transform(t::AbstractTransformer, X::Any, y::AbstractVector{T}) where {T <:
 """
 _transform(f, X) -> f(X)
 
-Transform the data set `X` with the transformer `f`.
+Transform the data set `X` with the fitted transformer `f`.
 """
 _transform(f::FittedTransformer, X::Any) =
     error("_transform not implemented for $(typeof(f))")
+
+"""
+_n_classes(f) -> Int
+
+Return the number of classes known to the fitted transformer `f`.
+"""
+_n_classes(f::FittedTransformer) =
+    error("_n_classes not implemented for $(typeof(f))")
 
 
 # utility methods
@@ -61,6 +69,9 @@ end
 
 function _fit_transform(t::ClassTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
     classifier = t.classifier
+    if minimum(y) ∉ [0, 1]
+        @error "minimum(y) ∉ [0, 1]"
+    end
     if !hasproperty(classifier, :oob_score) || !classifier.oob_score
         error("Only bagging classifiers with oob_score=true are supported")
     end # TODO add support for non-bagging classifiers
@@ -71,26 +82,30 @@ function _fit_transform(t::ClassTransformer, X::Any, y::AbstractVector{T}) where
     fX = classifier.oob_decision_function_
     is_finite = [ all(isfinite.(x)) for x in eachrow(fX) ] # Boolean vector
     fX = fX[is_finite,:]
-    y = y[is_finite]
+    y = y[is_finite] .+ (1 - minimum(y)) # map to one-based labels
     if !t.is_probabilistic
         fX = onehot_encoding(
             mapslices(argmax, fX; dims=2)[:], # y_pred
-            ScikitLearnBase.get_classes(classifier)
+            1:length(ScikitLearnBase.get_classes(classifier))
         )
     end
     return FittedClassTransformer(classifier, t.is_probabilistic), fX, y
 end
 
-_transform(f::FittedClassTransformer, X::Any) =
+function _transform(f::FittedClassTransformer, X::Any)
+    fX = ScikitLearnBase.predict_proba(f.classifier, X)
     if f.is_probabilistic
-        ScikitLearnBase.predict_proba(f.classifier, X)
+        return fX
     else
-        onehot_encoding(
-            ScikitLearnBase.predict(f.classifier, X),
-            ScikitLearnBase.get_classes(f.classifier)
+        return onehot_encoding(
+            mapslices(argmax, fX; dims=2)[:], # y_pred
+            1:length(ScikitLearnBase.get_classes(f.classifier))
         )
     end
+end
 
+_n_classes(f::FittedClassTransformer) =
+    length(ScikitLearnBase.get_classes(f.classifier))
 
 # histogram-based feature transformation
 
@@ -112,13 +127,19 @@ end
 
 struct FittedHistogramTransformer <: FittedTransformer
     edges::Matrix{Float64} # shape (n_bins-1, n_features)
+    n_classes::Int
     preprocessor::Union{FittedTransformer,Nothing}
 end
 
 function _fit_transform(t::HistogramTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
+    n_classes = length(unique(y))
     preprocessor, X, y = _fit_transform(t.preprocessor, X, y)
-    f = FittedHistogramTransformer(hcat(_edges.(eachcol(X), t.n_bins)...), preprocessor)
-    return f, _transform(f, X; apply_preprocessor=false), y
+    f = FittedHistogramTransformer(
+        hcat(_edges.(eachcol(X), t.n_bins)...),
+        n_classes,
+        preprocessor
+    )
+    return f, _transform(f, X; apply_preprocessor=false), y .+ (1 - minimum(y))
 end
 
 _edges(x::AbstractVector{T}, n_bins::Int) where {T<:Real} =
@@ -139,6 +160,8 @@ function _transform(f::FittedHistogramTransformer, X::AbstractArray; apply_prepr
     end
     return fX
 end
+
+_n_classes(f::FittedHistogramTransformer) = f.n_classes
 
 _fit_transform(t::Nothing, X::Any, y::AbstractVector{T}) where {T<:Integer} = t, X, y
 _transform(f::Nothing, X::Any) = X
@@ -200,17 +223,20 @@ end
 function _fit_transform(t::TreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
     f = fit(t, X, y) # create a FittedTreeTransformer with hold-out data (x, y)
     fX = onehot_encoding(f.x, 1:length(f.index_map))
-    y = f.y
+    y = f.y .+ (1 - minimum(f.y)) # map to one-based labels
     return FittedTreeTransformer(f.tree, f.index_map, Int[], Int[]), fX, y # forget (x, y)
 end
 
 _fit_transform(f::FittedTreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer} =
-    (f, onehot_encoding(f.x, 1:length(f.index_map)), f.y) # assume hold-out data (x, y)
+    (f, onehot_encoding(f.x, 1:length(f.index_map)), f.y .+ (1 - minimum(f.y))) # assume hold-out data (x, y)
 
 _transform(f::FittedTreeTransformer, X::Any) =
     onehot_encoding( # histogram representation
         [ f.index_map[x] for x ∈ _apply_tree(f.tree, X) ], # map to 1, …, F
         1:length(f.index_map)
     )
+
+_n_classes(f::FittedTreeTransformer) =
+    length(ScikitLearnBase.get_classes(f.tree))
 
 _apply_tree(tree::Any, X::Any) = tree.apply(X)
