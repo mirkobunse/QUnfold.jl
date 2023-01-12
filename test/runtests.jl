@@ -180,9 +180,13 @@ for (name, method) in [
 
             m = QUnfold.fit(method, X_trn, y_trn)
             m_zero = QUnfold.fit(method, X_trn, y_trn .- 1)
-            @test m.M == m_zero.M
-            @test size(m.M)[2] == 3 # test that the number of classes is correct
-            @test all(sum(m.M; dims=1) .> 0) # test that no class is missing
+            if typeof(m) <: QUnfold.FittedMethod{SLD,QUnfold.FittedClassTransformer}
+                @test length(m.f.classifier.classes_) == 3
+            else # SLD does not store a matrix M
+                @test m.M == m_zero.M
+                @test size(m.M)[2] == 3 # test that the number of classes is correct
+                @test all(sum(m.M; dims=1) .> 0) # test that no class is missing
+            end
             q = mean(QUnfold._transform(m.f, X_tst), dims=1)[:]
             q_zero = mean(QUnfold._transform(m_zero.f, X_tst), dims=1)[:]
             @test q == q_zero
