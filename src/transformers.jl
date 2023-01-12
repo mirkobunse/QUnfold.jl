@@ -203,6 +203,11 @@ function fit(t::TreeTransformer, X::AbstractArray, y::AbstractVector{T}) where {
         rng = MersenneTwister(tree.random_state)
         i_rand = randperm(rng, length(y)) # shuffle (X, y)
         i_tree = round(Int, length(y) * t.fit_frac) # where to split
+        c_trn = sort(unique(y[i_rand[1:i_tree]]))
+        c_val = sort(unique(y[i_rand[(i_tree+1):end]]))
+        if any(c_trn .!= c_val)
+            error("Missing label in one of the splits: c_trn=$c_trn, c_val=$c_val")
+        end
         ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
 
         # obtain all leaf indices by probing the tree with the training data
@@ -217,18 +222,22 @@ function fit(t::TreeTransformer, X::AbstractArray, y::AbstractVector{T}) where {
         x = _apply_tree(tree, X)
         index_map = Dict(zip(unique(x), 1:length(unique(x))))
     end
-    return FittedTreeTransformer(tree, index_map, [ index_map[x_i] for x_i ∈ x ], y) # map to 1, …, F
+    return FittedTreeTransformer(
+        tree,
+        index_map,
+        [ index_map[x_i] for x_i ∈ x ], # map to 1, …, F
+        y .+ (1 - minimum(y)) # map to one-based labels
+    )
 end
 
 function _fit_transform(t::TreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
     f = fit(t, X, y) # create a FittedTreeTransformer with hold-out data (x, y)
     fX = onehot_encoding(f.x, 1:length(f.index_map))
-    y = f.y .+ (1 - minimum(f.y)) # map to one-based labels
-    return FittedTreeTransformer(f.tree, f.index_map, Int[], Int[]), fX, y # forget (x, y)
+    return FittedTreeTransformer(f.tree, f.index_map, Int[], Int[]), fX, f.y # forget (x, y)
 end
 
 _fit_transform(f::FittedTreeTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer} =
-    (f, onehot_encoding(f.x, 1:length(f.index_map)), f.y .+ (1 - minimum(f.y))) # assume hold-out data (x, y)
+    (f, onehot_encoding(f.x, 1:length(f.index_map)), f.y) # assume hold-out data (x, y)
 
 _transform(f::FittedTreeTransformer, X::Any) =
     onehot_encoding( # histogram representation

@@ -173,11 +173,16 @@ for (name, method) in [
             X_trn, y_trn = generate_data([1, 2, 3], M)
             X_tst, y_tst = generate_data([3, 2, 1], M)
             p_tst = StatsBase.fit(Histogram, y_tst, 1:4).weights / length(y_tst)
+            if length(unique(y_trn)) != 3
+                @warn "Skipping tests because not all training labels are created"
+                continue
+            end
 
             m = QUnfold.fit(method, X_trn, y_trn)
             m_zero = QUnfold.fit(method, X_trn, y_trn .- 1)
             @test m.M == m_zero.M
-            @test all(sum(m.M; dims=2) .> 0) # test that no class is missing
+            @test size(m.M)[2] == 3 # test that the number of classes is correct
+            @test all(sum(m.M; dims=1) .> 0) # test that no class is missing
             q = mean(QUnfold._transform(m.f, X_tst), dims=1)[:]
             q_zero = mean(QUnfold._transform(m_zero.f, X_tst), dims=1)[:]
             @test q == q_zero
