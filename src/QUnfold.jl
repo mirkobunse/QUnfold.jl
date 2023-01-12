@@ -90,7 +90,7 @@ end
 
 function _sanitize_labels(y::AbstractVector{T}) where {T <: Integer}
     if minimum(y) == 0
-        y .+= 1
+        y = y .+ 1
     elseif minimum(y) != 1
         @error "minimum(y) ∉ [0, 1]"
     end
