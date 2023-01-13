@@ -28,6 +28,41 @@ function _check_solver_args(M::Matrix{Float64}, q::Vector{Float64})
     end
 end
 
+function _start_value(p_trn::Vector{Float64}, C::Int, strategy::Symbol, initialization::Symbol)
+    if strategy in [:softmax, :softmax_reg]
+        if initialization == :random
+            return rand(C-1) .* 2 .- 1
+        elseif initialization == :uniform
+            return zeros(C-1)
+        elseif initialization == :training # requires fitting l to p_trn
+            error("initialization=:training not yet implemented for strategy=$strategy")
+        elseif initialization == :least_squares # requires one Newton step
+            error("initialization=:least_squares not yet implemented")
+        end
+    elseif strategy == :softmax_full_reg
+        if initialization == :random
+            return rand(C) .* 2 .- 1
+        elseif initialization == :uniform
+            return zeros(C)
+        elseif initialization == :training
+            error("initialization=:training not yet implemented for strategy=$strategy")
+        elseif initialization == :least_squares
+            error("initialization=:least_squares not yet implemented")
+        end
+    elseif strategy == :constrained
+        if initialization == :random
+            p_0 = rand(C)
+            return p_0 ./ sum(p_0)
+        elseif initialization == :uniform
+            return ones(C) ./ C
+        elseif initialization == :training
+            return p_trn
+        elseif initialization == :least_squares
+            error("initialization=:least_squares not yet implemented")
+        end
+    end
+end
+
 
 # solvers
 
@@ -145,7 +180,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
 end
 
 
-function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, n_df::Int=size(M, 2), λ::Float64=1e-6)
+function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, p_trn::Vector{Float64}, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, initialization::Symbol=:random, n_df::Int=size(M, 2), λ::Float64=1e-6)
     _check_solver_args(M, q)
     if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
         nonzero = sum(M; dims=2)[:] .> 0
@@ -278,6 +313,11 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     )
 
     # solve and return
+    if strategy in [:softmax, :softmax_reg, :softmax_full_reg]
+        set_start_value.(l, _start_value(p_trn, C, strategy, initialization))
+    elseif strategy == :constrained
+        set_start_value.(p, _start_value(p_trn, C, strategy, initialization))
+    end
     optimize!(model)
     _check_termination_status(termination_status(model), :maximum_likelihood, strategy, M, q)
     if strategy in [:softmax, :softmax_reg]
