@@ -250,7 +250,7 @@ struct _RUN_SVD <: AbstractMethod
     n_df::Int # alternative regularization strength
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg, :unconstrained}
-    initialization::Symbol # ∈ {:random, :uniform, :training, :least_squares}
+    initialization::Symbol # ∈ {:random, :uniform, :training, :blobel}
 end
 
 """
