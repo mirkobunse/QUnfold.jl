@@ -43,7 +43,7 @@ echo "| Args: $args"
 read -p "Run this INTERACTIVE container? [y|N] " -r
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     docker create \
-        --tty --interactive --rm \
+        --tty --interactive \
         --volume /home/$USER:/mnt/home \
         --name "${USER}-${NAME}" \
         $RESOURCES \
