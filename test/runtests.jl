@@ -128,6 +128,7 @@ for (name, method) in [
         "PCC" => PCC(c),
         "RUN (constrained, τ=1e-6)" => RUN(t; strategy=:constrained, τ=1e-6),
         "RUN (softmax, τ=1e-6)" => RUN(t; strategy=:softmax, τ=1e-6),
+        "RUN (softmax, τ=1e-6, log_ϵ=1e3)" => RUN(t; strategy=:softmax, τ=1e-6, log_ϵ=1e3),
         "RUN (softmax_reg, τ=1e-6)" => RUN(t; strategy=:softmax_reg, τ=1e-6),
         "RUN (softmax_full_reg, τ=1e-6)" => RUN(t; strategy=:softmax_full_reg, τ=1e-6),
         "RUN (constrained, τ=10.0)" => RUN(t; strategy=:constrained, τ=10.0),

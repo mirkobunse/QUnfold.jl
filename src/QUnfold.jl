@@ -250,6 +250,7 @@ struct _RUN_SVD <: AbstractMethod
     n_df::Int # alternative regularization strength
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg, :unconstrained}
+    log_ϵ::Float64 # constant added to anything inside a logarithm
 end
 
 """
@@ -275,8 +276,8 @@ Blobel's loss function, feature transformation, and regularization can be optimi
 - `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 - `:unconstrained` (our method) is similar to `:original`, but uses a more generic solver.
 """
-RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:softmax) =
-    _RUN_SVD(transformer, :run, τ, n_df, a, strategy)
+RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, log_ϵ::Float64=0.0) =
+    _RUN_SVD(transformer, :run, τ, n_df, a, strategy, log_ϵ)
 
 """
     SVD(transformer; kwargs...)
@@ -301,12 +302,12 @@ Hoecker & Kartvelishvili's loss function, feature transformation, and regulariza
 - `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 - `:unconstrained` (our method) is similar to `:original`, but uses a more generic solver.
 """
-SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:softmax) =
-    _RUN_SVD(transformer, :svd, τ, n_df, a, strategy)
+SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax) =
+    _RUN_SVD(transformer, :svd, τ, n_df, a, strategy, 0.0)
 _transformer(m::_RUN_SVD) = m.transformer
 _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q))) =
     if m.loss == :run
-        solve_maximum_likelihood(M, q, N, b; τ=m.τ, n_df=m.n_df > 0 ? m.n_df : size(M, 2), a=m.a, strategy=m.strategy)
+        solve_maximum_likelihood(M, q, N, b; τ=m.τ, n_df=m.n_df > 0 ? m.n_df : size(M, 2), a=m.a, strategy=m.strategy, log_ϵ=m.log_ϵ)
     elseif m.loss == :svd # weighted least squares
         strategy = m.strategy == :original ? :svd : m.strategy # rename :original -> :svd
         n_df = m.n_df > 0 ? m.n_df : size(M, 2)
