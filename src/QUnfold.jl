@@ -416,12 +416,14 @@ struct IBU <: AbstractMethod
     o::Int # order of the polynomial
     λ::Float64 # impact of the polynomial
     a::Vector{Float64} # acceptance factors for regularization
-    IBU(transformer::Union{AbstractTransformer,FittedTransformer}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[]) =
-        new(transformer, o, λ, a)
+    n_iterations::Int # maximum number of interations
+    ϵ::Float64 # minimum Chi-Square distance between consecutive estimates
+    IBU(transformer::Union{AbstractTransformer,FittedTransformer}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[], n_iterations::Int=100, ϵ::Float64=.0) =
+        new(transformer, o, λ, a, n_iterations, ϵ)
 end
 _transformer(m::IBU) = m.transformer
 _solve(m::IBU, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
-    solve_expectation_maximization(M, q, N, ones(size(M, 2)) ./ size(M, 2); o=m.o, λ=m.λ, a=m.a)
+    solve_expectation_maximization(M, q, N, ones(size(M, 2)) ./ size(M, 2); o=m.o, λ=m.λ, a=m.a, n_iterations=m.n_iterations, ϵ=m.ϵ)
 
 """
     SLD(classifier; kwargs...)
