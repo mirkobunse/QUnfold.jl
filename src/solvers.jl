@@ -145,7 +145,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
 end
 
 
-function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, n_df::Int=size(M, 2), λ::Float64=1e-6)
+function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, n_df::Int=size(M, 2), λ::Float64=1e-6, log_ϵ::Float64=0.0)
     _check_solver_args(M, q)
     if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
         nonzero = sum(M; dims=2)[:] .> 0
@@ -159,9 +159,9 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         0 => fill(2, C),
         1 => fill(-1, C-1)
     )[2:(C-1), :]
-    q = 1 .+ (N-C) .* q # transform q to \bar{q}
 
     if strategy == :original # here, we assume p contains counts, not probabilities
+        q = 1 .+ (N-C) .* q # transform q to \bar{q}
         if length(a) == 0
             a = ones(C)
         end
@@ -234,15 +234,20 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     end
 
     # set up the solution vector p
+    q = log_ϵ .+ (N-C*log_ϵ) .* q # transform q to \bar{q}
     model = Model(Ipopt.Optimizer)
     set_silent(model)
+    set_optimizer_attribute(model, "tol", 1e-6)
+    set_optimizer_attribute(model, "max_iter", 100)
     if strategy in [:softmax, :softmax_reg]
         @variable(model, l[1:(C-1)]) # latent variables (unconstrained), where l[C] = 0
+        @NLexpression(model, exp_l[i = 1:(C-1)], exp(l[i]))
+        @NLexpression(model, sum_exp_l, 1 + sum(exp_l[j] for j in 1:(C-1)))
         p = Vector{NonlinearExpression}(undef, C) # p = softmax(l)
         for i in 1:(C-1)
-            p[i] = @NLexpression(model, exp(l[i]) / (1 + sum(exp(l[j]) for j in 1:(C-1))))
+            p[i] = @NLexpression(model, exp_l[i] / sum_exp_l)
         end
-        p[C] = @NLexpression(model, 1 / (1 + sum(exp(l[j]) for j in 1:(C-1)))) # exp(0) = 1 for l[C] = 0
+        p[C] = @NLexpression(model, 1 / sum_exp_l) # exp(0) = 1 for l[C] = 0
         if strategy == :softmax
             @NLexpression(model, softmax_regularizer, 0.0) # no soft-max regularization
         else
@@ -264,7 +269,7 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     end
 
     # minimum regularized log-likelihood  ∑_{i=1}^F [Mp]_i - q_i ln [Mp]_i  +  τ/2 * (Tp)^2
-    @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * (1 + (N-C) * p[j]) for j in 1:C))
+    @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * (log_ϵ + (N-C*log_ϵ) * p[j]) for j in 1:C))
     if length(a) > 0
         @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
     else
