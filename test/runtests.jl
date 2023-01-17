@@ -155,8 +155,10 @@ for (name, method) in [
         "HDy (softmax)" => HDy(c, 3; strategy=:softmax),
         "RUN (original, n_df=2)" => RUN(t; strategy=:original, n_df=2),
         "SVD (original, n_df=2)" => QUnfold.SVD(t; strategy=:original, n_df=2),
-        "IBU (o=0, λ=1.)" => IBU(t; o=0, λ=1.),
-        "o-SLD (o=0, λ=1.)" => SLD(c; o=0, λ=1.),
+        "IBU (o=0, λ=.1)" => IBU(t; o=0, λ=.1),
+        "IBU (o=0, λ=.1, n_iterations=1)" => IBU(t; o=0, λ=.1, n_iterations=1),
+        "IBU (o=0, λ=.1, ϵ=Inf)" => IBU(t; o=0, λ=.1, ϵ=Inf),
+        "o-SLD (o=0, λ=.1)" => SLD(c; o=0, λ=.1),
         ]
     @testset "$name" begin
         Random.seed!(42) # each method gets the same 10 trials

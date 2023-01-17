@@ -422,7 +422,7 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     return best_p[2]
 end
 
-function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, N::Int, p_0::Vector{Float64}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[])
+function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, N::Int, p_0::Vector{Float64}; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[], n_iterations::Int=100, ϵ::Float64=.0)
     if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
         nonzero = sum(M; dims=2)[:] .> 0
         q = q[nonzero]
@@ -430,15 +430,23 @@ function solve_expectation_maximization(M::Matrix{Float64}, q::Vector{Float64}, 
     end
     F, C = size(M) # the numbers of features and classes
     p_est = zeros(C) # the estimate
-    for _ ∈ 1:100
+    p_prev = p_0 # unsmoothed previous estimate for convergence check
+    for _ ∈ 1:n_iterations
         Mp = M .* p_0' # element-wise multiplication, [M]_ij * [p]_i
         for i ∈ 1:C
             p_est[i] = sum(Mp[j,i] * q[j] / sum(Mp[j,:]) for j ∈ 1:F)
         end
         p_0 = λ > 0 ? _smooth(p_est, N, o, λ, a) : p_est # prior of the next iteration
+        if _chisquare_distance(p_est, p_prev) < ϵ
+            break # assume convergence
+        end
+        p_prev = p_est
     end
     return p_est
 end
+
+_chisquare_distance(x::Vector{Float64}, y::Vector{Float64}) =
+    sum((x - y).^2 / (x + y)) # https://github.com/JuliaStats/Distances.jl
 
 function _smooth(p_est::Vector{Float64}, N::Int, o::Int, λ::Float64, a::Vector{Float64})
     C = length(p_est)
