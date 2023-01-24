@@ -176,15 +176,13 @@ This transformer yields a tree-induced partitioning, as proposed by Börner et a
 
 **Keyword arguments**
 
-- `fit_frac = 1/5` is the fraction of data used for training the tree if `fit_tree==true`.
 - `fit_tree = true` whether or not to fit the given `tree`.
 """
 struct TreeTransformer <: AbstractTransformer
     tree::Any
     fit_tree::Bool
-    fit_frac::Float64
-    TreeTransformer(tree::Any; fit_tree::Bool=true, fit_frac::Float64=1/5) =
-        new(tree, fit_tree, fit_frac)
+    TreeTransformer(tree::Any; fit_tree::Bool=true) =
+        new(tree, fit_tree)
 end
 
 struct FittedTreeTransformer <: FittedTransformer
@@ -200,28 +198,10 @@ function fit(t::TreeTransformer, X::AbstractArray, y::AbstractVector{T}) where {
     x = Int[]
     if t.fit_tree
         tree = ScikitLearnBase.clone(tree)
-        rng = MersenneTwister(tree.random_state)
-        i_rand = randperm(rng, length(y)) # shuffle (X, y)
-        i_tree = round(Int, length(y) * t.fit_frac) # where to split
-        c_trn = sort(unique(y[i_rand[1:i_tree]]))
-        c_val = sort(unique(y[i_rand[(i_tree+1):end]]))
-        if any(c_trn .!= c_val)
-            error("Missing label in one of the splits: c_trn=$c_trn, c_val=$c_val")
-        end
-        ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
-
-        # obtain all leaf indices by probing the tree with the training data
-        x = _apply_tree(tree, X[i_rand[1:i_tree], :]) # leaf indices (rather arbitrary)
-        index_map = Dict(zip(unique(x), 1:length(unique(x)))) # map to 1, …, F
-
-        # limit (X, y) to the remaining data that was not used for fitting the tree
-        x = _apply_tree(tree, X[i_rand[(i_tree+1):end], :]) # apply to the remaining data
-        y = y[i_rand[(i_tree+1):end]]
-    else
-        # guess the leaf indices by probing the tree with the available data
-        x = _apply_tree(tree, X)
-        index_map = Dict(zip(unique(x), 1:length(unique(x))))
+        ScikitLearnBase.fit!(tree, X, y)
     end
+    x = _apply_tree(tree, X)
+    index_map = Dict(zip(unique(x), 1:length(unique(x))))
     return FittedTreeTransformer(
         tree,
         index_map,
