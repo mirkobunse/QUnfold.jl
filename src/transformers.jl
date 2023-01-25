@@ -183,7 +183,7 @@ struct TreeTransformer <: AbstractTransformer
     tree::Any
     fit_tree::Bool
     fit_frac::Float64
-    TreeTransformer(tree::Any; fit_tree::Bool=true, fit_frac::Float64=1/5) =
+    TreeTransformer(tree::Any; fit_tree::Bool=true, fit_frac::Float64=1/2) =
         new(tree, fit_tree, fit_frac)
 end
 
