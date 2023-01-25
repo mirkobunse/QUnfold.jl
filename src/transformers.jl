@@ -203,10 +203,20 @@ function fit(t::TreeTransformer, X::AbstractArray, y::AbstractVector{T}) where {
         rng = MersenneTwister(tree.random_state)
         i_rand = randperm(rng, length(y)) # shuffle (X, y)
         i_tree = round(Int, length(y) * t.fit_frac) # where to split
-        c_trn = sort(unique(y[i_rand[1:i_tree]]))
-        c_val = sort(unique(y[i_rand[(i_tree+1):end]]))
-        if any(c_trn .!= c_val)
-            error("Missing label in one of the splits: c_trn=$c_trn, c_val=$c_val")
+        split_is_good = false
+        for _ in 1:5 # attempt broken splits multiple times
+            c_trn = sort(unique(y[i_rand[1:i_tree]]))
+            c_val = sort(unique(y[i_rand[(i_tree+1):end]]))
+            if length(c_trn) == length(c_val) && all(c_trn .== c_val)
+                split_is_good = true
+                break
+            else
+                @warn "Reattempting a split with missing labels" fit_frac c_trn c_val
+                i_rand = randperm(rng, length(y))
+            end
+        end
+        if !split_is_good
+            error("Missing label in one of the splits with fit_frac=$(t.fit_frac): c_trn=$c_trn, c_val=$c_val")
         end
         ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
 
