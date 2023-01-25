@@ -136,10 +136,13 @@ end
 struct _PythonACC <: QUnfold.AbstractMethod
     classifier::Any
     is_probabilistic::Bool
+    solver::String
     fit_classifier::Bool
 end
-PythonACC(c::Any; fit_classifier::Bool=true) = _PythonACC(c, false, fit_classifier)
-PythonPACC(c::Any; fit_classifier::Bool=true) = _PythonACC(c, true, fit_classifier)
+PythonACC(c::Any; solver::String="trust-exact", fit_classifier::Bool=true) =
+    _PythonACC(c, false, solver, fit_classifier)
+PythonPACC(c::Any; solver::String="trust-exact", fit_classifier::Bool=true) =
+    _PythonACC(c, true, solver, fit_classifier)
 
 struct _FittedPythonACC
     quantifier::PyObject
@@ -155,9 +158,9 @@ end
 
 function QUnfold.fit(m::_PythonACC, X::Any, y::AbstractVector{T}) where {T <: Integer}
     quantifier = if m.is_probabilistic
-        qunfold.ACC(m.classifier, fit_classifier=m.fit_classifier)
+        qunfold.ACC(m.classifier, solver=m.solver, fit_classifier=m.fit_classifier)
     else
-        qunfold.PACC(m.classifier, fit_classifier=m.fit_classifier)
+        qunfold.PACC(m.classifier, solver=m.solver, fit_classifier=m.fit_classifier)
     end
     return _FittedPythonACC(quantifier.fit(X, y))
 end
@@ -250,6 +253,25 @@ function main(;
                 "PACC (softmax reg.)" => PACC(c; strategy=:softmax_reg, fit_classifier=false),
                 "PACC (softmax full reg.)" => PACC(c; strategy=:softmax_full_reg, fit_classifier=false),
             ]
+        elseif configuration == :py
+            [
+                "ACC (solver=\"dogleg\")" =>
+                    PythonACC(c; solver="dogleg", fit_classifier=false),
+                "ACC (solver=\"trust-ncg\")" =>
+                    PythonACC(c; solver="trust-ncg", fit_classifier=false),
+                "ACC (solver=\"trust-krylov\")" =>
+                    PythonACC(c; solver="trust-krylov", fit_classifier=false),
+                "ACC (solver=\"trust-exact\")" =>
+                    PythonACC(c; solver="trust-exact", fit_classifier=false),
+                "PACC (solver=\"dogleg\")" =>
+                    PythonPACC(c; solver="dogleg", fit_classifier=false),
+                "PACC (solver=\"trust-ncg\")" =>
+                    PythonPACC(c; solver="trust-ncg", fit_classifier=false),
+                "PACC (solver=\"trust-krylov\")" =>
+                    PythonPACC(c; solver="trust-krylov", fit_classifier=false),
+                "PACC (solver=\"trust-exact\")" =>
+                    PythonPACC(c; solver="trust-exact", fit_classifier=false),
+            ]
         else
             error("There is no configuration \"$(configuration)\"")
         end
@@ -324,7 +346,7 @@ function parse_commandline()
     s = ArgParseSettings()
     @add_arg_table s begin
         "--configuration", "-c"
-            help = "which methods to use; either \"lq22\" (default) or \"dev\""
+            help = "which methods to use; either lq22 (default), dev, or py"
             arg_type = Symbol
             default = :lq22
         "--is_validation_run", "-v"
