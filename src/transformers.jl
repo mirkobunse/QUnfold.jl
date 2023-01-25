@@ -216,7 +216,7 @@ function fit(t::TreeTransformer, X::AbstractArray, y::AbstractVector{T}) where {
             end
         end
         if !split_is_good
-            error("Missing label in one of the splits with fit_frac=$(t.fit_frac): c_trn=$c_trn, c_val=$c_val")
+            error("Missing label in one of the splits with fit_frac=$(t.fit_frac)")
         end
         ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
 
