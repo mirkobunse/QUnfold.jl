@@ -211,7 +211,7 @@ function fit(t::TreeTransformer, X::AbstractArray, y::AbstractVector{T}) where {
                 split_is_good = true
                 break
             else
-                @warn "Reattempting a split with missing labels" fit_frac c_trn c_val
+                @warn "Reattempting a split with missing labels" t.fit_frac c_trn c_val
                 i_rand = randperm(rng, length(y))
             end
         end
