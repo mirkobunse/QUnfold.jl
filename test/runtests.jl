@@ -110,7 +110,11 @@ end # testset
 
 Random.seed!(42)
 c = RandomForestClassifier(; oob_score=true, random_state=rand(UInt32))
-t = TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32)))
+t1 = TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32)))
+t2 = TreeTransformer(
+    DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32));
+    fit_tree = 1/2
+)
 for (name, method) in [
         "o-ACC (constrained, τ=10.0)" => ACC(c; τ=10.0, strategy=:constrained),
         "ACC (constrained)" => ACC(c; strategy=:constrained),
@@ -126,22 +130,22 @@ for (name, method) in [
         "PACC (softmax_full_reg)" => PACC(c; strategy=:softmax_full_reg),
         "PACC (pinv)" => PACC(c; strategy=:pinv),
         "PCC" => PCC(c),
-        "RUN (constrained, τ=1e-6)" => RUN(t; strategy=:constrained, τ=1e-6),
-        "RUN (softmax, τ=1e-6)" => RUN(t; strategy=:softmax, τ=1e-6),
-        "RUN (softmax_reg, τ=1e-6)" => RUN(t; strategy=:softmax_reg, τ=1e-6),
-        "RUN (softmax_full_reg, τ=1e-6)" => RUN(t; strategy=:softmax_full_reg, τ=1e-6),
-        "RUN (constrained, τ=10.0)" => RUN(t; strategy=:constrained, τ=10.0),
-        "RUN (softmax, τ=10.0)" => RUN(t; strategy=:softmax, τ=10.0),
-        "RUN (softmax_reg, τ=10.0)" => RUN(t; strategy=:softmax_reg, τ=10.0),
-        "RUN (softmax_full_reg, τ=10.0)" => RUN(t; strategy=:softmax_full_reg, τ=10.0),
-        "SVD (constrained, τ=1e-6)" => QUnfold.SVD(t; strategy=:constrained, τ=1e-6),
-        "SVD (softmax, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax, τ=1e-6),
-        "SVD (softmax_reg, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax_reg, τ=1e-6),
-        "SVD (softmax_full_reg, τ=1e-6)" => QUnfold.SVD(t; strategy=:softmax_full_reg, τ=1e-6),
-        "SVD (constrained, τ=10.0)" => QUnfold.SVD(t; strategy=:constrained, τ=10.0),
-        "SVD (softmax, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax, τ=10.0),
-        "SVD (softmax_reg, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax_reg, τ=10.0),
-        "SVD (softmax_full_reg, τ=10.0)" => QUnfold.SVD(t; strategy=:softmax_full_reg, τ=10.0),
+        "RUN (constrained, τ=1e-6)" => RUN(t1; strategy=:constrained, τ=1e-6),
+        "RUN (softmax, τ=1e-6)" => RUN(t1; strategy=:softmax, τ=1e-6),
+        "RUN (softmax_reg, τ=1e-6)" => RUN(t1; strategy=:softmax_reg, τ=1e-6),
+        "RUN (softmax_full_reg, τ=1e-6)" => RUN(t1; strategy=:softmax_full_reg, τ=1e-6),
+        "RUN (constrained, τ=10.0)" => RUN(t2; strategy=:constrained, τ=10.0),
+        "RUN (softmax, τ=10.0)" => RUN(t2; strategy=:softmax, τ=10.0),
+        "RUN (softmax_reg, τ=10.0)" => RUN(t2; strategy=:softmax_reg, τ=10.0),
+        "RUN (softmax_full_reg, τ=10.0)" => RUN(t2; strategy=:softmax_full_reg, τ=10.0),
+        "SVD (constrained, τ=1e-6)" => QUnfold.SVD(t1; strategy=:constrained, τ=1e-6),
+        "SVD (softmax, τ=1e-6)" => QUnfold.SVD(t1; strategy=:softmax, τ=1e-6),
+        "SVD (softmax_reg, τ=1e-6)" => QUnfold.SVD(t1; strategy=:softmax_reg, τ=1e-6),
+        "SVD (softmax_full_reg, τ=1e-6)" => QUnfold.SVD(t1; strategy=:softmax_full_reg, τ=1e-6),
+        "SVD (constrained, τ=10.0)" => QUnfold.SVD(t1; strategy=:constrained, τ=10.0),
+        "SVD (softmax, τ=10.0)" => QUnfold.SVD(t1; strategy=:softmax, τ=10.0),
+        "SVD (softmax_reg, τ=10.0)" => QUnfold.SVD(t1; strategy=:softmax_reg, τ=10.0),
+        "SVD (softmax_full_reg, τ=10.0)" => QUnfold.SVD(t1; strategy=:softmax_full_reg, τ=10.0),
         "o-HDx (constrained, τ=10.0)" => HDx(3; τ=10.0, strategy=:constrained),
         "HDx (softmax_reg)" => HDx(3; strategy=:softmax_reg),
         "HDx (softmax_full_reg)" => HDx(3; strategy=:softmax_full_reg),
@@ -152,11 +156,11 @@ for (name, method) in [
         "HDy (softmax_full_reg)" => HDy(c, 3; strategy=:softmax_full_reg),
         "HDy (constrained)" => HDy(c, 3; strategy=:constrained),
         "HDy (softmax)" => HDy(c, 3; strategy=:softmax),
-        "RUN (original, n_df=2)" => RUN(t; strategy=:original, n_df=2),
-        "SVD (original, n_df=2)" => QUnfold.SVD(t; strategy=:original, n_df=2),
-        "IBU (o=0, λ=.1)" => IBU(t; o=0, λ=.1),
-        "IBU (o=0, λ=.1, n_iterations=1)" => IBU(t; o=0, λ=.1, n_iterations=1),
-        "IBU (o=0, λ=.1, ϵ=Inf)" => IBU(t; o=0, λ=.1, ϵ=Inf),
+        "RUN (original, n_df=2)" => RUN(t1; strategy=:original, n_df=2),
+        "SVD (original, n_df=2)" => QUnfold.SVD(t1; strategy=:original, n_df=2),
+        "IBU (o=0, λ=.1)" => IBU(t1; o=0, λ=.1),
+        "IBU (o=0, λ=.1, n_iterations=1)" => IBU(t1; o=0, λ=.1, n_iterations=1),
+        "IBU (o=0, λ=.1, ϵ=Inf)" => IBU(t1; o=0, λ=.1, ϵ=Inf),
         "o-SLD (o=0, λ=.1)" => SLD(c; o=0, λ=.1),
         ]
     @testset "$name" begin

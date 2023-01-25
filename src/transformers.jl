@@ -80,7 +80,7 @@ function _fit_transform(t::ClassTransformer, X::Any, y::AbstractVector{T}) where
         ScikitLearnBase.fit!(classifier, X, y)
     end
     fX = classifier.oob_decision_function_
-    is_finite = [ all(isfinite.(x)) for x in eachrow(fX) ] # Boolean vector
+    is_finite = [ all(isfinite.(x)) for x in eachrow(fX) ] # Bool vector
     fX = fX[is_finite,:]
     y = y[is_finite] .+ (1 - minimum(y)) # map to one-based labels
     if !t.is_probabilistic
@@ -169,6 +169,39 @@ _transform(f::Nothing, X::Any) = X
 
 # tree-induced partitioning
 
+function _split_indices( # split at the fraction indicated by fit_tree
+        y::AbstractVector{T},
+        fit_tree::Float64;
+        seed::Union{Nothing,Integer} = nothing
+        ) where {T<:Integer}
+    if fit_tree ≥ 1
+        i = collect(1:length(y))
+        return i, i # = (i_trn, i_val) where i_trn = i_val
+    else
+        rng = MersenneTwister(seed)
+        i_rand = randperm(rng, length(y)) # shuffle indices of (X, y)
+        i_tree = round(Int, length(y) * fit_tree) # where to split
+        split_is_good = false
+        for _ in 1:5 # attempt broken splits multiple times
+            c_trn = sort(unique(y[i_rand[1:i_tree]]))
+            c_val = sort(unique(y[i_rand[(i_tree+1):end]]))
+            if length(c_trn) == length(c_val) && all(c_trn .== c_val)
+                split_is_good = true
+                break
+            else
+                @warn "Reattempting a split with missing labels" fit_tree c_trn c_val
+                i_rand = randperm(rng, length(y))
+            end
+        end
+        if !split_is_good
+            error("Missing label in one of the splits with fit_tree=$(fit_tree)")
+        end
+        i_trn = i_rand[1:i_tree]
+        i_val = i_rand[(i_tree+1):end]
+        return i_trn, i_val
+    end
+end
+
 """
     TreeTransformer(tree; kwargs...)
 
@@ -176,15 +209,13 @@ This transformer yields a tree-induced partitioning, as proposed by Börner et a
 
 **Keyword arguments**
 
-- `fit_frac = 1/5` is the fraction of data used for training the tree if `fit_tree==true`.
-- `fit_tree = true` whether or not to fit the given `tree`.
+- `fit_tree = 1.` whether or not to fit the given `tree`. If `fit_tree` is `false` or `0.`, do not fit the tree and use all data for fitting `M`. If `fit_tree` is `true` or `1.`, fit both the tree and `M` with *all* data. If `fit_tree` is between 0 and 1, use a fraction of `fit_tree` for fitting the tree and the remaining fraction `1-fit_tree` for fitting `M`.
 """
 struct TreeTransformer <: AbstractTransformer
     tree::Any
-    fit_tree::Bool
-    fit_frac::Float64
-    TreeTransformer(tree::Any; fit_tree::Bool=true, fit_frac::Float64=1/2) =
-        new(tree, fit_tree, fit_frac)
+    fit_tree::Float64
+    TreeTransformer(tree::Any; fit_tree::Union{Bool,Float64}=1.) =
+        new(tree, Float64(fit_tree))
 end
 
 struct FittedTreeTransformer <: FittedTransformer
@@ -198,36 +229,19 @@ function fit(t::TreeTransformer, X::AbstractArray, y::AbstractVector{T}) where {
     tree = t.tree
     index_map = Dict{Int,Int}()
     x = Int[]
-    if t.fit_tree
+    if t.fit_tree ≥ 0
         tree = ScikitLearnBase.clone(tree)
-        rng = MersenneTwister(tree.random_state)
-        i_rand = randperm(rng, length(y)) # shuffle (X, y)
-        i_tree = round(Int, length(y) * t.fit_frac) # where to split
-        split_is_good = false
-        for _ in 1:5 # attempt broken splits multiple times
-            c_trn = sort(unique(y[i_rand[1:i_tree]]))
-            c_val = sort(unique(y[i_rand[(i_tree+1):end]]))
-            if length(c_trn) == length(c_val) && all(c_trn .== c_val)
-                split_is_good = true
-                break
-            else
-                @warn "Reattempting a split with missing labels" t.fit_frac c_trn c_val
-                i_rand = randperm(rng, length(y))
-            end
-        end
-        if !split_is_good
-            error("Missing label in one of the splits with fit_frac=$(t.fit_frac)")
-        end
-        ScikitLearnBase.fit!(tree, X[i_rand[1:i_tree], :], y[i_rand[1:i_tree]])
+        i_trn, i_val = _split_indices(y, t.fit_tree, seed=tree.random_state)
+        ScikitLearnBase.fit!(tree, X[i_trn, :], y[i_trn])
 
         # obtain all leaf indices by probing the tree with the training data
-        x = _apply_tree(tree, X[i_rand[1:i_tree], :]) # leaf indices (rather arbitrary)
+        x = _apply_tree(tree, X[i_trn, :]) # leaf indices (rather arbitrary)
         index_map = Dict(zip(unique(x), 1:length(unique(x)))) # map to 1, …, F
 
         # limit (X, y) to the remaining data that was not used for fitting the tree
-        x = _apply_tree(tree, X[i_rand[(i_tree+1):end], :]) # apply to the remaining data
-        y = y[i_rand[(i_tree+1):end]]
-    else
+        x = _apply_tree(tree, X[i_val, :]) # apply to the remaining data
+        y = y[i_val]
+    else # t.fit_tree is either 0. or false
         # guess the leaf indices by probing the tree with the available data
         x = _apply_tree(tree, X)
         index_map = Dict(zip(unique(x), 1:length(unique(x))))
