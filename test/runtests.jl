@@ -133,6 +133,7 @@ for (name, method) in [
         "RUN (positive, τ=1e-6)" => RUN(t1; strategy=:positive, τ=1e-6),
         "RUN (constrained, τ=1e-6)" => RUN(t1; strategy=:constrained, τ=1e-6),
         "RUN (softmax, τ=1e-6)" => RUN(t1; strategy=:softmax, τ=1e-6),
+        "RUN (softmax, IPNewton backend, τ=1e-6)" => RUN(t1; strategy=:softmax, backend=:ipnewton, τ=1e-6),
         "RUN (softmax_reg, τ=1e-6)" => RUN(t1; strategy=:softmax_reg, τ=1e-6),
         "RUN (softmax_full_reg, τ=1e-6)" => RUN(t1; strategy=:softmax_full_reg, τ=1e-6),
         "RUN (constrained, τ=10.0)" => RUN(t2; strategy=:constrained, τ=10.0),

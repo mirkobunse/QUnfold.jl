@@ -1,4 +1,4 @@
-import Ipopt, MathOptInterface.TerminationStatusCode, Polynomials
+import Ipopt, MathOptInterface, MathOptInterface.TerminationStatusCode, Optim, Polynomials
 
 # utilities
 
@@ -145,7 +145,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
 end
 
 
-function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, n_df::Int=size(M, 2), λ::Float64=1e-6)
+function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, backend::Symbol=:ipopt, n_df::Int=size(M, 2), λ::Float64=1e-6)
     _check_solver_args(M, q)
     if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
         nonzero = sum(M; dims=2)[:] .> 0
@@ -283,7 +283,39 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         + softmax_regularizer # optional soft-max regularization
     )
 
-    # solve and return
+    # solve with experimental backend :ipnewton
+    if backend == :ipnewton
+        if strategy != :softmax
+            error("backend=:ipnewton only supports strategy=:softmax for now")
+        end
+        evaluator = NLPEvaluator(model)
+        MathOptInterface.initialize(evaluator, [:Grad, :Hess])
+        fun = x -> MathOptInterface.eval_objective(evaluator, x)
+        g!(∇f, x) = begin # store the gradient in ∇f
+            MathOptInterface.eval_objective_gradient(evaluator, ∇f, x)
+        end
+        structure = MathOptInterface.hessian_lagrangian_structure(evaluator)
+        h!(∇²f, x) = begin # store the Hessian in ∇²f
+            ∇²f_vec = zeros(length(structure))
+            MathOptInterface.eval_hessian_lagrangian(evaluator, ∇²f_vec, x, 1., .0)
+            for (ij, ∇²f_ij) ∈ zip(structure, ∇²f_vec)
+                ∇²f[ij...] = ∇²f_ij
+            end
+        end
+        x_0 = rand(C-1) .* 2 .- 1
+        opt = Optim.optimize(
+            Optim.TwiceDifferentiable(fun, g!, h!, x_0),
+            Optim.TwiceDifferentiableConstraints(Float64[], Float64[]), # no constraints
+            x_0,
+            Optim.IPNewton()
+        )
+        exp_l = vcat(exp.(Optim.minimizer(opt)), 1)
+        return exp_l ./ sum(exp_l)
+    elseif backend != :ipopt
+        error("Unknown backend=$(backend)")
+    end
+
+    # solve and return with standard backend :ipopt
     optimize!(model)
     _check_termination_status(termination_status(model), :maximum_likelihood, strategy, M, q)
     if strategy in [:softmax, :softmax_reg]
