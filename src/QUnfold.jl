@@ -274,6 +274,7 @@ Blobel's loss function, feature transformation, and regularization can be optimi
 - `:softmax_full_reg` (our method) introduces a soft-max layer, which makes contraints obsolete. This strategy employs a technical regularization term, as proposed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
 - `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 - `:unconstrained` (our method) is similar to `:original`, but uses a more generic solver.
+- `:positive` (our method) is `:constrained` without the sum constraint.
 """
 RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:softmax) =
     _RUN_SVD(transformer, :run, τ, n_df, a, strategy)

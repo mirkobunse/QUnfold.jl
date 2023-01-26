@@ -130,6 +130,7 @@ for (name, method) in [
         "PACC (softmax_full_reg)" => PACC(c; strategy=:softmax_full_reg),
         "PACC (pinv)" => PACC(c; strategy=:pinv),
         "PCC" => PCC(c),
+        "RUN (positive, τ=1e-6)" => RUN(t1; strategy=:positive, τ=1e-6),
         "RUN (constrained, τ=1e-6)" => RUN(t1; strategy=:constrained, τ=1e-6),
         "RUN (softmax, τ=1e-6)" => RUN(t1; strategy=:softmax, τ=1e-6),
         "RUN (softmax_reg, τ=1e-6)" => RUN(t1; strategy=:softmax_reg, τ=1e-6),

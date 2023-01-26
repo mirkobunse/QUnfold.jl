@@ -259,6 +259,9 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         @variable(model, p[1:C] ≥ 0) # p_i ≥ 0
         @NLconstraint(model, sum(p[i] for i in 1:C) == 1)
         @NLexpression(model, softmax_regularizer, 0.0) # do not use soft-max regularization
+    elseif strategy == :positive # ignore the sum constrained from strategy :constrained
+        @variable(model, p[1:C] ≥ 0) # p_i ≥ 0
+        @NLexpression(model, softmax_regularizer, 0.0)
     elseif strategy == :unconstrained
         @variable(model, p[1:C])
         @NLexpression(model, softmax_regularizer, 0.0)
@@ -270,10 +273,10 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * N * p[j] for j in 1:C))
     if length(a) > 0
         @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
-    else
-        @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
+        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+    else # just regularize 1/2*(Tp)^2
+        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p[j] for j in 1:C))
     end
-    @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
     @NLobjective(model, Min,
         sum(Mp[i] - q[i] * log(Mp[i]) for i in 1:F) # loss function
         + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
@@ -290,6 +293,8 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         return exp.(value.(l)) ./ sum(exp.(value.(l)))
     elseif strategy ∈ [:constrained, :unconstrained]
         return value.(p)
+    elseif strategy == :positive
+        return value.(p) ./ sum(value.(p))
     end
 end
 
