@@ -40,6 +40,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
         nonzero = sum(M; dims=2)[:] .> 0
         q = q[nonzero]
         M = M[nonzero, :]
+        w = w[nonzero]
     end
     F, C = size(M) # the numbers of features and classes
 
