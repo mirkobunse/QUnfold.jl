@@ -316,7 +316,7 @@ _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float6
         error("There is no loss \"$(m.loss)\"")
     end
 function _svd_weights(q::Vector{Float64}, N::Int)
-    w = sqrt.(N .* q)
+    w = sqrt.(1 .+ max.(1, N-length(q)) .* q)
     return w ./ mean(w) # the mean weight will be 1 after this normalization
 end
 
