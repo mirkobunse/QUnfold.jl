@@ -23,6 +23,7 @@ extract_order(x) = Dict(
         "solver=\"trust-ncg\"" => 102,
         "solver=\"trust-krylov\"" => 103,
         "solver=\"trust-exact\"" => 104,
+        "mixed, solver=\"trust-ncg\"" => 109,
     )[x[2]]
 
 extract_adjustment(x) = Dict(
@@ -40,6 +41,7 @@ extract_adjustment(x) = Dict(
         "solver=\"trust-ncg\"" => "trust-ncg",
         "solver=\"trust-krylov\"" => "trust-krylov",
         "solver=\"trust-exact\"" => "trust-exact",
+        "mixed, solver=\"trust-ncg\"" => "Mixed trust-ncg",
     )[x[2]]
 
 extract_method(x) = Dict(

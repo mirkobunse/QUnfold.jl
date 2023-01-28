@@ -139,9 +139,9 @@ struct _PythonACC <: QUnfold.AbstractMethod
     solver::String
     fit_classifier::Bool
 end
-PythonACC(c::Any; solver::String="trust-exact", fit_classifier::Bool=true) =
+PythonACC(c::Any; solver::String="trust-ncg", fit_classifier::Bool=true) =
     _PythonACC(c, false, solver, fit_classifier)
-PythonPACC(c::Any; solver::String="trust-exact", fit_classifier::Bool=true) =
+PythonPACC(c::Any; solver::String="trust-ncg", fit_classifier::Bool=true) =
     _PythonACC(c, true, solver, fit_classifier)
 
 struct _FittedPythonACC
@@ -165,6 +165,40 @@ function QUnfold.fit(m::_PythonACC, X::Any, y::AbstractVector{T}) where {T <: In
     return _FittedPythonACC(quantifier.fit(X, y))
 end
 QUnfold.predict(m::_FittedPythonACC, X::Any) = m.quantifier.predict(X)
+
+
+# Mixed ACC / PACC of QUnfold.jl and Python's qunfold
+
+struct _MixedACC <: QUnfold.AbstractMethod
+    classifier::Any
+    is_probabilistic::Bool
+    solver::String
+    fit_classifier::Bool
+end
+MixedACC(c::Any; solver::String="trust-ncg", fit_classifier::Bool=true) =
+    _MixedACC(c, false, solver, fit_classifier)
+MixedPACC(c::Any; solver::String="trust-ncg", fit_classifier::Bool=true) =
+    _MixedACC(c, true, solver, fit_classifier)
+
+struct _FittedMixedACC
+    jl::QUnfold.FittedMethod{QUnfold._ACC, QUnfold.FittedClassTransformer}
+    py::PyObject
+end
+
+QUnfold.fit(m::_MixedACC, X::Any, y::AbstractVector{T}) where {T <: Integer} =
+    if m.is_probabilistic
+        return _FittedMixedACC(
+            QUnfold.fit(ACC(m.classifier; fit_classifier=m.fit_classifier), X, y),
+            qunfold.ACC(nothing, solver=m.solver)
+        )
+    else
+        return _FittedMixedACC(
+            QUnfold.fit(PACC(m.classifier; fit_classifier=m.fit_classifier), X, y),
+            qunfold.PACC(nothing, solver=m.solver)
+        )
+    end
+QUnfold.predict(m::_FittedMixedACC, X::Any) = # jl yields q and M, py solves q = M*p
+    m.py.solve(mean(QUnfold._transform(m.jl.f, X), dims=1)[:], m.jl.M)
 
 
 # evaluation (https://github.com/HLT-ISTI/LeQua2022_scripts/blob/main/evaluate.py#L46)
@@ -271,6 +305,10 @@ function main(;
                     PythonPACC(c; solver="trust-krylov", fit_classifier=false),
                 "PACC (solver=\"trust-exact\")" =>
                     PythonPACC(c; solver="trust-exact", fit_classifier=false),
+                "ACC (mixed, solver=\"trust-ncg\")" =>
+                    MixedACC(c; solver="trust-ncg", fit_classifier=false),
+                "PACC (mixed, solver=\"trust-ncg\")" =>
+                    MixedPACC(c; solver="trust-ncg", fit_classifier=false),
             ]
         else
             error("There is no configuration \"$(configuration)\"")
