@@ -92,7 +92,14 @@ function main(; validation_path::String="", testing_path::String="", output_path
         makeunique = true,
         renamecols = Pair("; AE", "; RAE")
     )
-    export_table(output_path, df[!,[1,2,4,3,5]]) # re-order columns
+    df = df[:, [ # re-order the columns
+        :adjustment,
+        Symbol("ACC / CC; AE"),
+        Symbol("ACC / CC; RAE"),
+        Symbol("PACC / PCC; AE"),
+        Symbol("PACC / PCC; RAE"),
+    ]]
+    export_table(output_path, df)
     @info "LaTeX table exported to $(output_path)"
 end
 
