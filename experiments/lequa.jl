@@ -137,12 +137,13 @@ struct _PythonACC <: QUnfold.AbstractMethod
     classifier::Any
     is_probabilistic::Bool
     solver::String
+    solver_options::Union{Nothing,Dict{String,Any}}
     fit_classifier::Bool
 end
-PythonACC(c::Any; solver::String="trust-exact", fit_classifier::Bool=true) =
-    _PythonACC(c, false, solver, fit_classifier)
-PythonPACC(c::Any; solver::String="trust-exact", fit_classifier::Bool=true) =
-    _PythonACC(c, true, solver, fit_classifier)
+PythonACC(c::Any; solver::String="trust-exact", solver_options::Union{Nothing,Dict{String,Any}}=nothing, fit_classifier::Bool=true) =
+    _PythonACC(c, false, solver, solver_options, fit_classifier)
+PythonPACC(c::Any; solver::String="trust-exact", solver_options::Union{Nothing,Dict{String,Any}}=nothing, fit_classifier::Bool=true) =
+    _PythonACC(c, true, solver, solver_options, fit_classifier)
 
 struct _FittedPythonACC
     quantifier::PyObject
@@ -158,9 +159,9 @@ end
 
 function QUnfold.fit(m::_PythonACC, X::Any, y::AbstractVector{T}) where {T <: Integer}
     quantifier = if m.is_probabilistic
-        qunfold.PACC(m.classifier, solver=m.solver, fit_classifier=m.fit_classifier)
+        qunfold.PACC(m.classifier, solver=m.solver, solver_options=m.solver_options, fit_classifier=m.fit_classifier)
     else
-        qunfold.ACC(m.classifier, solver=m.solver, fit_classifier=m.fit_classifier)
+        qunfold.ACC(m.classifier, solver=m.solver, solver_options=m.solver_options, fit_classifier=m.fit_classifier)
     end
     return _FittedPythonACC(quantifier.fit(X, y))
 end
@@ -255,18 +256,30 @@ function main(;
             ]
         elseif configuration == :py
             [
+                "ACC (solver=\"Newton-CG\")" =>
+                    PythonACC(c; solver="Newton-CG", fit_classifier=false),
                 "ACC (solver=\"dogleg\")" =>
                     PythonACC(c; solver="dogleg", fit_classifier=false),
                 "ACC (solver=\"trust-ncg\")" =>
-                    PythonACC(c; solver="trust-ncg", fit_classifier=false),
+                    PythonACC(c;
+                        solver = "trust-ncg",
+                        solver_options = Dict{String,Any}("gtol" => 1e-8),
+                        fit_classifier = false
+                    ),
                 "ACC (solver=\"trust-krylov\")" =>
                     PythonACC(c; solver="trust-krylov", fit_classifier=false),
                 "ACC (solver=\"trust-exact\")" =>
                     PythonACC(c; solver="trust-exact", fit_classifier=false),
+                "PACC (solver=\"Newton-CG\")" =>
+                    PythonPACC(c; solver="Newton-CG", fit_classifier=false),
                 "PACC (solver=\"dogleg\")" =>
                     PythonPACC(c; solver="dogleg", fit_classifier=false),
                 "PACC (solver=\"trust-ncg\")" =>
-                    PythonPACC(c; solver="trust-ncg", fit_classifier=false),
+                    PythonPACC(c;
+                        solver = "trust-ncg",
+                        solver_options = Dict{String,Any}("gtol" => 1e-8),
+                        fit_classifier = false
+                    ),
                 "PACC (solver=\"trust-krylov\")" =>
                     PythonPACC(c; solver="trust-krylov", fit_classifier=false),
                 "PACC (solver=\"trust-exact\")" =>

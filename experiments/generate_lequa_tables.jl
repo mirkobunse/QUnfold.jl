@@ -19,10 +19,11 @@ extract_order(x) = Dict(
         "softmax; Python" => 7,
         "softmax reg." => 8,
         "softmax full reg." => 9,
-        "solver=\"dogleg\"" => 101,
-        "solver=\"trust-ncg\"" => 102,
-        "solver=\"trust-krylov\"" => 103,
-        "solver=\"trust-exact\"" => 104,
+        "solver=\"Newton-CG\"" => 101,
+        "solver=\"dogleg\"" => 102,
+        "solver=\"trust-ncg\"" => 103,
+        "solver=\"trust-krylov\"" => 104,
+        "solver=\"trust-exact\"" => 105,
     )[x[2]]
 
 extract_adjustment(x) = Dict(
@@ -36,6 +37,7 @@ extract_adjustment(x) = Dict(
         "softmax; Python" => "soft-max with \$[\\vec{l}\\,]_C = 0, \\lambda=0\$ (Python)",
         "softmax reg." => "soft-max with \$[\\vec{l}\\,]_C = 0, \\lambda=10^{-6}\$",
         "softmax full reg." => "soft-max with \$[\\vec{l}\\,]_C \\in \\mathbb{R}, \\lambda=10^{-6}\$ (Eq.~\\ref{eq:softmax})",
+        "solver=\"Newton-CG\"" => "Newton-CG",
         "solver=\"dogleg\"" => "dogleg",
         "solver=\"trust-ncg\"" => "trust-ncg",
         "solver=\"trust-krylov\"" => "trust-krylov",
