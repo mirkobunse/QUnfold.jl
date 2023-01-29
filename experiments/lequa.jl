@@ -158,9 +158,9 @@ end
 
 function QUnfold.fit(m::_PythonACC, X::Any, y::AbstractVector{T}) where {T <: Integer}
     quantifier = if m.is_probabilistic
-        qunfold.ACC(m.classifier, solver=m.solver, fit_classifier=m.fit_classifier)
-    else
         qunfold.PACC(m.classifier, solver=m.solver, fit_classifier=m.fit_classifier)
+    else
+        qunfold.ACC(m.classifier, solver=m.solver, fit_classifier=m.fit_classifier)
     end
     return _FittedPythonACC(quantifier.fit(X, y))
 end
