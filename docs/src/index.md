@@ -19,14 +19,14 @@ Each quantification / unfolding technique implements a [`fit`](@ref) and a [`pre
 - The [`fit`](@ref) function receives a training set `(X, y)` as an input. It returns a **trained copy** of the quantification / unfolding technique; no in-place training happens.
 - The [`predict`](@ref) function receives a single sample of multiple data items. It returns the estimated vector of class prevalences within this sample.
 
-The underlying classifier of each technique must be a bagging classifier with `oob_score=true`, which implements the API of [ScikitLearn.jl](https://github.com/cstjean/ScikitLearn.jl/).
+The underlying classifier of each technique must implement the API of [ScikitLearn.jl](https://github.com/cstjean/ScikitLearn.jl/). We recommend bagging classifiers with `oob_score=true` because their out-of-bag (OOB) predictions can be used to fit the quantifier in a statistically consistent manner. However, our implementation also works with any non-bagging classifier.
 
 ```julia
 using QUnfold, ScikitLearn
 @sk_import ensemble: RandomForestClassifier
 
-acc = ACC( # a scikit-learn bagging classifier with oob_score is needed
-    RandomForestClassifier(oob_score=true)
+acc = ACC( # a scikit-learn classifier is needed
+    RandomForestClassifier(oob_score=true) # we recommend bagging with oob_score=true
 )
 
 # X_trn, y_trn = my_training_data(...)

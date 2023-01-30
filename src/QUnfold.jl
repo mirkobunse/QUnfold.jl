@@ -125,6 +125,7 @@ struct _ACC <: AbstractMethod
     τ::Float64 # regularization strength for o-ACC and o-PACC
     a::Vector{Float64} # acceptance factors for regularization
     fit_classifier::Bool
+    oob_score::Bool # whether to use classifier.oob_decision_function_
 end
 
 """
@@ -140,6 +141,7 @@ A regularization strength `τ > 0` yields the o-ACC method for ordinal quantific
 - `τ = 0.0` is the regularization strength for o-ACC.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 - `fit_classifier = true` whether or not to fit the given `classifier`.
+- `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
 
 **Strategies**
 
@@ -154,8 +156,14 @@ For binary classification, ACC is proposed by Forman, 2008: *Quantifying counts 
 - `:softmax_full_reg` (our method) introduces a soft-max layer, which makes contraints obsolete. This strategy employs a technical regularization term, as proposed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
 - `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 """
-ACC(c::Any; strategy::Symbol=:softmax, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
-    _ACC(c, strategy, false, τ, a, fit_classifier)
+ACC(c::Any;
+        strategy::Symbol = :softmax,
+        τ::Float64 = 0.0,
+        a::Vector{Float64} = Float64[],
+        fit_classifier::Bool = true,
+        oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
+        ) =
+    _ACC(c, strategy, false, τ, a, fit_classifier, oob_score)
 
 """
     PACC(classifier; kwargs...)
@@ -170,6 +178,7 @@ A regularization strength `τ > 0` yields the o-PACC method for ordinal quantifi
 - `τ = 0.0` is the regularization strength for o-PACC.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 - `fit_classifier = true` whether or not to fit the given `classifier`.
+- `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
 
 **Strategies**
 
@@ -184,8 +193,14 @@ For binary classification, PACC is proposed by Bella et al., 2010: *Quantificati
 - `:softmax_full_reg` (our method) introduces a soft-max layer, which makes contraints obsolete. This strategy employs a technical regularization term, as proposed by Bunse, 2022: *On Multi-Class Extensions of Adjusted Classify and Count*.
 - `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 """
-PACC(c::Any; strategy::Symbol=:softmax, τ::Float64=0.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
-    _ACC(c, strategy, true, τ, a, fit_classifier)
+PACC(c::Any;
+        strategy::Symbol = :softmax,
+        τ::Float64 = 0.0,
+        a::Vector{Float64} = Float64[],
+        fit_classifier::Bool = true,
+        oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
+        ) =
+    _ACC(c, strategy, true, τ, a, fit_classifier, oob_score)
 
 """
     CC(classifier; kwargs...)
@@ -195,9 +210,13 @@ The Classify & Count method, which uses crisp classifier predictions without any
 **Keyword arguments**
 
 - `fit_classifier = true` whether or not to fit the given `classifier`.
+- `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
 """
-CC(c::Any; fit_classifier::Bool=true) =
-    _ACC(c, :none, false, 0.0, Float64[], fit_classifier)
+CC(c::Any;
+        fit_classifier::Bool = true,
+        oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
+        ) =
+    _ACC(c, :none, false, 0.0, Float64[], fit_classifier, oob_score)
 
 """
     PCC(classifier; kwargs...)
@@ -207,14 +226,20 @@ The Probabilistic Classify & Countmethod, which uses predictions of posterior pr
 **Keyword arguments**
 
 - `fit_classifier = true` whether or not to fit the given `classifier`.
+- `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
 """
-PCC(c::Any; fit_classifier::Bool=true) =
-    _ACC(c, :none, true, 0.0, Float64[], fit_classifier)
+PCC(c::Any;
+        fit_classifier::Bool = true,
+        oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
+        ) =
+    _ACC(c, :none, true, 0.0, Float64[], fit_classifier, oob_score)
 
-_transformer(m::_ACC) = ClassTransformer(
+_transformer(m::_ACC) =
+    ClassTransformer(
         m.classifier;
         is_probabilistic = m.is_probabilistic,
-        fit_classifier = m.fit_classifier
+        fit_classifier = m.fit_classifier,
+        oob_score = m.oob_score
     )
 
 _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
@@ -350,7 +375,8 @@ struct HDx <: AbstractMethod
     τ::Float64 # regularization strength
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg}
-    HDx(n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:softmax) = new(n_bins, τ, a, strategy)
+    HDx(n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:softmax) =
+        new(n_bins, τ, a, strategy)
 end
 
 """
@@ -366,6 +392,7 @@ The parameter `n_bins` specifies the number of bins *per class*. A regularizatio
 - `τ = 0.0` is the regularization strength for o-HDx.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 - `fit_classifier = true` whether or not to fit the given `classifier`.
+- `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
 
 **Strategies**
 
@@ -383,8 +410,15 @@ struct HDy <: AbstractMethod
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg}
     fit_classifier::Bool
-    HDy(classifier::Any, n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:softmax, fit_classifier::Bool=true) =
-        new(classifier, n_bins, τ, a, strategy, fit_classifier)
+    oob_score::Bool # whether to use classifier.oob_decision_function_
+    HDy(c::Any, n_bins::Int;
+            τ::Float64 = 0.0,
+            a::Vector{Float64} = Float64[],
+            strategy = :softmax,
+            fit_classifier::Bool = true,
+            oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
+            ) =
+        new(c, n_bins, τ, a, strategy, fit_classifier, oob_score)
 end
 _transformer(m::HDx) = HistogramTransformer(m.n_bins)
 _transformer(m::HDy) = HistogramTransformer(
@@ -392,7 +426,8 @@ _transformer(m::HDy) = HistogramTransformer(
         preprocessor = ClassTransformer(
             m.classifier;
             is_probabilistic = true,
-            fit_classifier = m.fit_classifier
+            fit_classifier = m.fit_classifier,
+            oob_score = m.oob_score
         )
     )
 _solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q))) =
@@ -446,11 +481,20 @@ struct SLD <: AbstractMethod
     λ::Float64 # impact of the polynomial
     a::Vector{Float64} # acceptance factors for regularization
     fit_classifier::Bool
-    SLD(classifier::Any; o::Int=-1, λ::Float64=.0, a::Vector{Float64}=Float64[], fit_classifier::Bool=true) =
-        new(classifier, o, λ, a, fit_classifier)
+    SLD(c::Any;
+            o::Int=-1,
+            λ::Float64=.0,
+            a::Vector{Float64}=Float64[],
+            fit_classifier::Bool=true
+            ) =
+        new(c, o, λ, a, fit_classifier)
 end
 function fit(m::SLD, X::Any, y::AbstractVector{T}) where {T <: Integer}
-    t = ClassTransformer(m.classifier; is_probabilistic=true, fit_classifier=m.fit_classifier)
+    t = ClassTransformer(
+        m.classifier;
+        is_probabilistic = true,
+        fit_classifier = m.fit_classifier
+    )
     f = _fit_transform(t, X, y)[1] # ensures that minimum(y) ∈ [0, 1]
     p_trn = [ mean((y .+ (1 - minimum(y))) .== i) for i ∈ 1:_n_classes(f) ]
     return FittedMethod(m, Matrix{Float64}(undef, 0, 0), f, p_trn)

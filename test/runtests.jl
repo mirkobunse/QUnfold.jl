@@ -11,6 +11,7 @@ Random.seed!(42) # make tests reproducible
 
 RandomForestClassifier = pyimport_conda("sklearn.ensemble", "scikit-learn").RandomForestClassifier
 DecisionTreeClassifier = pyimport_conda("sklearn.tree", "scikit-learn").DecisionTreeClassifier
+LogisticRegression = pyimport_conda("sklearn.linear_model", "scikit-learn").LogisticRegression
 
 function generate_data(p, M; n_samples=1000)
     y = StatsBase.sample(1:3, Weights(p), n_samples)
@@ -109,7 +110,7 @@ def paccPteCondEstim(classes, y, y_):
 end # testset
 
 Random.seed!(42)
-c = RandomForestClassifier(; oob_score=true, random_state=rand(UInt32))
+c = LogisticRegression(; random_state=rand(UInt32))
 t1 = TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32)))
 t2 = TreeTransformer(
     DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32));

@@ -53,13 +53,20 @@ This transformer yields the classification-based feature transformation used in 
 
 - `is_probabilistic = false` whether or not to use posterior predictions.
 - `fit_classifier = true` whether or not to fit the given `classifier`.
+- `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
 """
 struct ClassTransformer <: AbstractTransformer
     classifier::Any
     is_probabilistic::Bool
     fit_classifier::Bool
-    ClassTransformer(classifier::Any; is_probabilistic::Bool=false, fit_classifier::Bool=true) =
-        new(classifier, is_probabilistic, fit_classifier)
+    oob_score::Bool
+    ClassTransformer(
+            classifier::Any;
+            is_probabilistic::Bool = false,
+            fit_classifier::Bool = true,
+            oob_score::Bool = hasproperty(classifier, :oob_score) && classifier.oob_score
+            ) =
+        new(classifier, is_probabilistic, fit_classifier, oob_score)
 end
 
 struct FittedClassTransformer <: FittedTransformer
@@ -68,20 +75,21 @@ struct FittedClassTransformer <: FittedTransformer
 end
 
 function _fit_transform(t::ClassTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
-    classifier = t.classifier
     if minimum(y) ∉ [0, 1]
         @error "minimum(y) ∉ [0, 1]"
     end
-    if !hasproperty(classifier, :oob_score) || !classifier.oob_score
-        error("Only bagging classifiers with oob_score=true are supported")
-    end # TODO add support for non-bagging classifiers
+    classifier = t.classifier
     if t.fit_classifier
         classifier = ScikitLearnBase.clone(classifier)
         ScikitLearnBase.fit!(classifier, X, y)
     end
-    fX = classifier.oob_decision_function_
+    fX = if t.oob_score
+        classifier.oob_decision_function_
+    else
+        classifier.predict_proba(X)
+    end
     is_finite = [ all(isfinite.(x)) for x in eachrow(fX) ] # Bool vector
-    fX = fX[is_finite,:]
+    fX = fX[is_finite,:] # remove NaNs from oob_decision_function_
     y = y[is_finite] .+ (1 - minimum(y)) # map to one-based labels
     if !t.is_probabilistic
         fX = onehot_encoding(

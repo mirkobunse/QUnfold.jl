@@ -16,8 +16,8 @@ using QUnfold, ScikitLearn
 
 # X_trn, y_trn = my_training_data(...)
 
-acc = ACC( # a scikit-learn bagging classifier with oob_score is needed
-    RandomForestClassifier(oob_score=true)
+acc = ACC( # a scikit-learn classifier is needed
+    RandomForestClassifier(oob_score=true) # we recommend bagging with oob_score=true
 )
 trained_acc = fit(acc, X_trn, y_trn) # fit returns a trained COPY
 
