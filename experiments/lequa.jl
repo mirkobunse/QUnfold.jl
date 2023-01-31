@@ -263,7 +263,7 @@ function main(;
                 "ACC (solver=\"trust-ncg\")" =>
                     PythonACC(c;
                         solver = "trust-ncg",
-                        solver_options = Dict{String,Any}("gtol" => 1e-8),
+                        solver_options = Dict{String,Any}("gtol" => 1e-8, "maxiter" => 1000),
                         fit_classifier = false
                     ),
                 "ACC (solver=\"trust-krylov\")" =>
@@ -277,7 +277,7 @@ function main(;
                 "PACC (solver=\"trust-ncg\")" =>
                     PythonPACC(c;
                         solver = "trust-ncg",
-                        solver_options = Dict{String,Any}("gtol" => 1e-8),
+                        solver_options = Dict{String,Any}("gtol" => 1e-8, "maxiter" => 1000),
                         fit_classifier = false
                     ),
                 "PACC (solver=\"trust-krylov\")" =>
