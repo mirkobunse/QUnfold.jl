@@ -2,6 +2,7 @@ module QUnfold
 
 using
     DiffResults,
+    Distances,
     ForwardDiff,
     JuMP,
     LinearAlgebra,
@@ -14,6 +15,8 @@ export
     ACC,
     CC,
     ClassTransformer,
+    EDX,
+    EDy,
     fit,
     HDx,
     HDy,
@@ -509,5 +512,93 @@ predict(m::FittedMethod{SLD,FittedClassTransformer}, X::Any) =
         λ = m.method.λ,
         a = m.method.a
     )
+
+# energy distance methods (o-)EDX/y
+
+struct _EDX <: AbstractMethod
+    distance::PreMetric # requires δ(x,y) ≥ 0, but not symmetry
+    strategy::Symbol # ∈ {:softmax, :original}
+    τ::Float64 # regularization strength
+    a::Vector{Float64} # acceptance factors for regularization
+    preprocessor::Union{AbstractTransformer,Nothing}
+end
+
+struct _FittedEDX{T<:Integer}
+    method::_EDX
+    preprocessor::Union{FittedTransformer,Nothing}
+    A::Symmetric{Float64,Matrix{Float64}}
+    X::Any # store all training data for distance computations
+    y::AbstractVector{T}
+end
+
+"""
+    EDX(; kwargs...)
+
+The energy distance method EDX.
+
+**Keyword arguments**
+
+- `distance = Euclidean()` is the distance metric between data items.
+- `strategy = :softmax` is the solution strategy (see below).
+- `τ = 0` is the regularization strength for ordinal quantification.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+"""
+EDX(;
+        distance::PreMetric = Euclidean(),
+        strategy = :softmax,
+        τ::Float64 = 0.,
+        a::Vector{Float64} = Float64[]
+        ) =
+    _EDX(distance, strategy, τ, a, nothing)
+
+"""
+    EDy(classifier; kwargs...)
+
+The energy distance method EDy.
+
+**Keyword arguments**
+
+- `fit_classifier = true` whether or not to fit the given `classifier`.
+- `distance = Euclidean()` is the distance metric between predictions.
+- `strategy = :softmax` is the solution strategy (see below).
+- `τ = 0` is the regularization strength for ordinal quantification.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+"""
+EDy(classifier;
+        distance::PreMetric = Euclidean(),
+        fit_classifier::Bool = true,
+        strategy = :softmax,
+        τ::Float64 = 0.,
+        a::Vector{Float64} = Float64[]
+        ) =
+    _EDX(distance, strategy, τ, a, ClassTransformer(
+        classifier;
+        fit_classifier = fit_classifier,
+        is_probabilistic = true
+    ))
+
+function fit(m::_EDX, X::Any, y::AbstractVector{T}) where {T <: Integer}
+    preprocessor, X, y = _fit_transform(m.preprocessor, X, y)
+    y = y .+ (1 - minimum(y)) # map to 1:C
+    C = maximum(y)
+    A = zeros(C, C)
+    for i in 1:C, j in i:C # Eq. 14 in Castano et al. (2022)
+        A[i,j] = mean(pairwise(m.distance, X[y.==i,:], X[y.==j,:]; dims=1))
+    end
+    return _FittedEDX(m, preprocessor, Symmetric(A), X, y)
+end
+
+function predict(m::_FittedEDX, X::Any)
+    X = _transform(m.preprocessor, X)
+    s = zeros(size(m.A, 1))
+    for i in 1:length(s) # Eq. 13 in Castano et al. (2022)
+        s[i] = mean(pairwise(m.method.distance, m.X[m.y.==i,:], X; dims=1))
+    end
+    return solve_energy_distance(m.A, s;
+        τ = m.method.τ,
+        a = m.method.a,
+        strategy = m.method.strategy
+    )
+end
 
 end # module

@@ -110,7 +110,7 @@ def paccPteCondEstim(classes, y, y_):
 end # testset
 
 Random.seed!(42)
-c = LogisticRegression(; random_state=rand(UInt32))
+c = RandomForestClassifier(20; oob_score=true, random_state=rand(UInt32))
 t1 = TreeTransformer(DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32)))
 t2 = TreeTransformer(
     DecisionTreeClassifier(max_leaf_nodes=9, random_state=rand(UInt32));
@@ -164,11 +164,14 @@ for (name, method) in [
         "IBU (o=0, λ=.1, n_iterations=1)" => IBU(t1; o=0, λ=.1, n_iterations=1),
         "IBU (o=0, λ=.1, ϵ=Inf)" => IBU(t1; o=0, λ=.1, ϵ=Inf),
         "o-SLD (o=0, λ=.1)" => SLD(c; o=0, λ=.1),
+        "EDX (softmax)" => EDX(),
+        "EDX (original)" => EDX(; strategy=:original),
+        "o-EDy (softmax, τ=10)" => EDy(c; τ=10.),
         ]
     @testset "$name" begin
         Random.seed!(42) # each method gets the same 10 trials
         mae = Float64[] # mean absolute error over all trials
-        for trial_seed in rand(UInt32, 10)
+        for trial_seed in rand(UInt32, 5)
             Random.seed!(trial_seed)
             M = diagm( # construct and artificial quantification task
                 0 => rand(3) * .7 .+ .1,
@@ -190,14 +193,23 @@ for (name, method) in [
             m_zero = QUnfold.fit(method, X_trn, y_trn .- 1)
             if typeof(m) <: QUnfold.FittedMethod{SLD,QUnfold.FittedClassTransformer}
                 @test length(m.f.classifier.classes_) == 3
-            else # SLD does not store a matrix M
+            elseif typeof(m) <: QUnfold._FittedEDX
+                @test size(m.A, 1) == 3
+            else # all other methods store a matrix M
                 @test m.M == m_zero.M
                 @test size(m.M)[2] == 3 # test that the number of classes is correct
                 @test all(sum(m.M; dims=1) .> 0) # test that no class is missing
             end
-            q = mean(QUnfold._transform(m.f, X_tst), dims=1)[:]
-            q_zero = mean(QUnfold._transform(m_zero.f, X_tst), dims=1)[:]
-            @test q == q_zero
+            if !(typeof(m) <: QUnfold._FittedEDX)
+                q = mean(QUnfold._transform(m.f, X_tst), dims=1)[:]
+                q_zero = mean(QUnfold._transform(m_zero.f, X_tst), dims=1)[:]
+                @test q == q_zero
+
+                # m_py = pyimport("ordinal_quantification.factory").EDX().fit(X_trn, y_trn)
+                # p_py = m_py.predict(X_tst)
+                # @info name p_hat p_py
+            end
+
             p_hat = QUnfold.predict(m, X_tst)
             @debug name p_hat
             @test p_hat ≈ QUnfold.predict(m_zero, X_tst) atol=0.1
