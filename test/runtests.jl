@@ -167,6 +167,7 @@ for (name, method) in [
         "EDX (softmax)" => EDX(),
         "EDX (original)" => EDX(; strategy=:original),
         "o-EDy (softmax, τ=10)" => EDy(c; τ=10.),
+        "EDy (EMD, softmax)" => EDy(c; distance=EarthMovers()),
         ]
     @testset "$name" begin
         Random.seed!(42) # each method gets the same 10 trials

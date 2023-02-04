@@ -15,6 +15,7 @@ export
     ACC,
     CC,
     ClassTransformer,
+    EarthMovers,
     EDX,
     EDy,
     fit,
@@ -600,5 +601,39 @@ function predict(m::_FittedEDX, X::Any)
         strategy = m.method.strategy
     )
 end
+
+# Earth Movers Distance for EDy
+
+"""
+    EarthMovers(ground_distance)
+
+The Earth Mover's Distance (EMD) [rubner1998metric] is defined over a `ground_distance` which defines the distance between two indices of a vector.
+
+The EMD is implemented here through the Minimum Distance of Pair Assignments (MDPA) [cha2002measuring], a special case of the EMD for univariate histograms with `ground_distance=Cityblock()``.
+"""
+struct EarthMovers{T<:PreMetric} <: SemiMetric
+    ground_distance::T
+end
+EarthMovers() = EarthMovers(Cityblock()) # the default distance is Cityblock
+
+function (d::EarthMovers{Cityblock})( # make Earthmovers() callable = API of Distances.jl
+        a::AbstractVector{T},
+        b::AbstractVector{T}
+        ) where {T<:Number}
+    if length(a) != length(b)
+        error("length(a) = $(length(a)) != length(b) = $(length(b))")
+    elseif !isapprox(sum(a), sum(b))
+        error("sum(a) = $(sum(a)) != sum(b) = $(sum(b))")
+    end
+    prefixsum = 0.0 # algorithm 1 in [cha2002measuring]
+    distance  = 0.0
+    for i in 1:length(a)
+        prefixsum += a[i] - b[i]
+        distance  += abs(prefixsum)
+    end
+    return distance / sum(a) # this normalization renders MDPA equivalent to EMD
+end
+
+(d::EarthMovers{Cityblock})(a::T, b::T) where {T<:Number} = abs(a - b)
 
 end # module
