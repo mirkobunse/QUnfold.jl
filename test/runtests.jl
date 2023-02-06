@@ -168,6 +168,14 @@ for (name, method) in [
         "EDX (original)" => EDX(; strategy=:original),
         "o-EDy (softmax, τ=10)" => EDy(c; τ=10.),
         "EDy (EMD, softmax)" => EDy(c; distance=EarthMovers()),
+        "o-PDF (EMD, J=16, τ=10, softmax)" => PDF(c, 16; τ=10., distance=EarthMovers()),
+        "o-PDF (EMD, J=16, τ=10, constrained)" => PDF(c, 16; τ=10., distance=EarthMovers(), strategy=:constrained),
+        "PDF (L2, J=16, softmax)" => PDF(c, 16),
+        "PDF (L2, J=16, constrained)" => PDF(c, 16; strategy=:constrained),
+        "PDF (EMD, J=16, softmax)" => PDF(c, 16; distance=EarthMovers()),
+        "PDF (EMD, J=16, constrained)" => PDF(c, 16; distance=EarthMovers(), strategy=:constrained),
+        "PDF (s-EMD, J=16, softmax)" => PDF(c, 16; distance=EarthMoversSurrogate()),
+        "PDF (s-EMD, J=16, constrained)" => PDF(c, 16; distance=EarthMoversSurrogate(), strategy=:constrained),
         ]
     @testset "$name" begin
         Random.seed!(42) # each method gets the same 10 trials

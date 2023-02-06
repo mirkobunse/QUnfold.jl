@@ -530,3 +530,71 @@ function _Bt(A::Symmetric{Float64,Matrix{Float64}}, s::Vector{Float64})
     end
     return Symmetric(B), t
 end
+
+function solve_pdf(M::Matrix{Float64}, q::Vector{Float64}; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, distance::PreMetric=Euclidean())
+    _check_solver_args(M, q)
+    if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
+        nonzero = sum(M; dims=2)[:] .> 0
+        q = q[nonzero]
+        M = M[nonzero, :]
+    end
+    F, C = size(M) # the numbers of features and classes
+    T = LinearAlgebra.diagm( # the Tikhonov matrix for optional curvature regularization
+        -1 => fill(-1, C-1),
+        0 => fill(2, C),
+        1 => fill(-1, C-1)
+    )[2:(C-1), :]
+
+    model = Model(Ipopt.Optimizer)
+    set_silent(model)
+    if strategy == :softmax
+        @variable(model, l[1:(C-1)]) # latent variables
+        p = Vector{NonlinearExpression}(undef, C) # p = softmax(l) with l[C]=0
+        for i in 1:(C-1)
+            p[i] = @NLexpression(model, exp(l[i]) / (1 + sum(exp(l[j]) for j in 1:(C-1))))
+        end
+        p[C] = @NLexpression(model, 1 / (1 + sum(exp(l[j]) for j in 1:(C-1))))
+    elseif strategy in [:original, :constrained] # original = constrained
+        @variable(model, p[1:C] >= 0)
+        @constraint(model, sum(p[i] for i in 1:C) == 1)
+    else
+        error("There is no strategy \"$(strategy)\"")
+    end
+    if length(a) > 0
+        @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
+    else
+        @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
+    end
+    @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+    @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * p[j] for j in 1:C))
+    if typeof(distance) <: Euclidean
+        @NLobjective(model, Min,
+            sum((q[i] - Mp[i])^2 for i in 1:F) # L2 norm between PDFs
+            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+        )
+    elseif typeof(distance) <: EarthMovers{Cityblock}
+        q_cdf = cumsum(q)[1:end-1] # last element is 1
+        @NLexpression(model, Mp_cdf[i = 1:(F-1)], sum(Mp[j] for j in 1:i))
+        @NLobjective(model, Min,
+            sum(abs(q_cdf[i] - Mp_cdf[i]) for i in 1:(F-1)) # L1 norm between CDFs = EMD
+            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+        )
+    elseif typeof(distance) <: EarthMoversSurrogate{Cityblock}
+        q_cdf = cumsum(q)[1:end-1] # last element is 1
+        @NLexpression(model, Mp_cdf[i = 1:(F-1)], sum(Mp[j] for j in 1:i))
+        @NLobjective(model, Min,
+            sum((q_cdf[i] - Mp_cdf[i])^2 for i in 1:(F-1)) # L2 norm between CDFs
+            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+        )
+    end
+
+    # solve and return
+    optimize!(model)
+    _check_termination_status(termination_status(model), :pdf, strategy, M, q)
+    if strategy == :softmax
+        exp_l = vcat(exp.(value.(l)), 1)
+        return exp_l ./ sum(exp_l)
+    elseif strategy in [:original, :constrained]
+        return value.(p)
+    end
+end

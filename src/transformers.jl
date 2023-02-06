@@ -281,3 +281,30 @@ _n_classes(f::FittedTreeTransformer) =
     length(ScikitLearnBase.get_classes(f.tree))
 
 _apply_tree(tree::Any, X::Any) = tree.apply(X)
+
+
+# scoring transformation for the PDF method
+
+"""
+    ScoreTransformer(preprocessor)
+
+This transformer, together with `preprocessor=ClassTransformer(...)`, yields the scoring-based feature transformation used in `PDF`.
+"""
+struct ScoreTransformer{T<:AbstractTransformer} <: AbstractTransformer
+    preprocessor::T
+end
+
+struct FittedScoreTransformer{T<:FittedTransformer} <: FittedTransformer
+    preprocessor::T
+end
+
+function _fit_transform(t::ScoreTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
+    f, fX, y = _fit_transform(t.preprocessor, X, y)
+    return FittedScoreTransformer(f), _ranking_score(fX), y
+end
+
+_transform(f::FittedScoreTransformer, X::Any) =
+    _ranking_score(_transform(f.preprocessor, X))
+
+_ranking_score(X::Any) = # map a matrix X of posteriors to a single scoring feature
+    sum(X .* hcat([ones(size(X,1))*i for i in 1:size(X,2)]...), dims=2)

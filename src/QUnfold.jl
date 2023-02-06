@@ -16,6 +16,7 @@ export
     CC,
     ClassTransformer,
     EarthMovers,
+    EarthMoversSurrogate,
     EDX,
     EDy,
     fit,
@@ -24,6 +25,7 @@ export
     IBU,
     PACC,
     PCC,
+    PDF,
     predict,
     predict_with_background,
     RUN,
@@ -605,11 +607,11 @@ end
 # Earth Movers Distance for EDy
 
 """
-    EarthMovers(ground_distance)
+    EarthMovers(ground_distance=Cityblock())
 
 The Earth Mover's Distance (EMD) [rubner1998metric] is defined over a `ground_distance` which defines the distance between two indices of a vector.
 
-The EMD is implemented here through the Minimum Distance of Pair Assignments (MDPA) [cha2002measuring], a special case of the EMD for univariate histograms with `ground_distance=Cityblock()``.
+The EMD is implemented here through the Minimum Distance of Pair Assignments (MDPA) [cha2002measuring], a special case of the EMD for univariate histograms with `ground_distance=Cityblock()`.
 """
 struct EarthMovers{T<:PreMetric} <: SemiMetric
     ground_distance::T
@@ -633,7 +635,67 @@ function (d::EarthMovers{Cityblock})( # make Earthmovers() callable = API of Dis
     end
     return distance / sum(a) # this normalization renders MDPA equivalent to EMD
 end
+(d::EarthMovers{Cityblock})(a::T, b::T) where {T<:Number} = abs(a - b) # scalar version
 
-(d::EarthMovers{Cityblock})(a::T, b::T) where {T<:Number} = abs(a - b)
+
+# PDF method
+
+"""
+    PDF(classifier; kwargs...)
+
+The PDF method.
+
+**Keyword arguments**
+
+- `distance = Euclidean()` is the distance between prevalence vectors.
+- `strategy = :softmax` is the solution strategy (see below).
+- `τ = 0.0` is the regularization strength for o-PDF.
+- `a = Float64[]` are the acceptance factors for unfolding analyses.
+- `fit_classifier = true` whether or not to fit the given `classifier`.
+- `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
+
+**Strategies**
+
+- `:softmax` (default; our method) improves `:softmax_full_reg` by setting one latent parameter to zero instead of introducing a technical regularization term.
+- `:constrained` constrains the optimization to proper probability densities, as proposed by Hopkins & King, 2010: *A method of automated nonparametric content analysis for social science*.
+"""
+struct PDF <: AbstractMethod
+    classifier::Any
+    n_bins::Int
+    distance::PreMetric # requires δ(x,y) ≥ 0, but not symmetry
+    strategy::Symbol # ∈ {:softmax, :original}
+    τ::Float64 # regularization strength
+    a::Vector{Float64} # acceptance factors for regularization
+    fit_classifier::Bool
+    oob_score::Bool # whether to use classifier.oob_decision_function_
+    PDF(c::Any, n_bins::Int;
+            distance::PreMetric = Euclidean(),
+            strategy::Symbol = :softmax,
+            τ::Float64 = 0.0,
+            a::Vector{Float64} = Float64[],
+            fit_classifier::Bool = true,
+            oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score,
+            ) =
+        new(c, n_bins, distance, strategy, τ, a, fit_classifier, oob_score)
+end
+
+_transformer(m::PDF) =
+    HistogramTransformer(
+        m.n_bins,
+        preprocessor = ScoreTransformer(ClassTransformer(
+            m.classifier;
+            is_probabilistic = true,
+            fit_classifier = m.fit_classifier,
+            oob_score = m.oob_score
+        ))
+    )
+
+_solve(m::PDF, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q))) =
+    solve_pdf(M, q; τ=m.τ, a=m.a, strategy=m.strategy, distance=m.distance)
+
+struct EarthMoversSurrogate{T<:PreMetric} <: SemiMetric
+    ground_distance::T
+end
+EarthMoversSurrogate() = EarthMoversSurrogate(Cityblock())
 
 end # module
