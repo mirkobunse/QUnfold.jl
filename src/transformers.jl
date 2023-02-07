@@ -307,4 +307,4 @@ _transform(f::FittedScoreTransformer, X::Any) =
     _ranking_score(_transform(f.preprocessor, X))
 
 _ranking_score(X::Any) = # map a matrix X of posteriors to a single scoring feature
-    sum(X .* hcat([ones(size(X,1))*i for i in 1:size(X,2)]...), dims=2)
+    X * collect(1:size(X,2)) # = sum(X .* hcat([ones(F)*i for i in 1:C]...), dims=2)
