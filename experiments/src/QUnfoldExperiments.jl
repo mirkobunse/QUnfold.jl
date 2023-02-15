@@ -327,9 +327,13 @@ sample_npp_simulation(N) = round_Np(N, P_TRN[]) ./ N
 sample_app(N, m) = [ sample_app(N) for _ in 1:m ]
 sample_app(N) = round_Np(N, rand(Dirichlet(ones(length(BIN_CENTERS[]))))) ./ N
 
-function sample_app_oq(N, m=10000, keep=.2)
+function sample_app_oq(N, m=10000, keep=.2, with_log10=true)
     app = sample_app(N, ceil(Int, m/keep))
-    c = [ curvature(log10.(x)) for x in app ]
+    if with_log10
+        c = [ curvature(log10.(x)) for x in app ]
+    else
+        c = [ curvature(x) for x in app ]
+    end
     i = sortperm(c)[1:m]
     return app[i]
 end
