@@ -88,7 +88,7 @@ function _fit_transform(t::ClassTransformer, X::Any, y::AbstractVector{T}) where
     else
         classifier.predict_proba(X)
     end
-    is_finite = [ all(isfinite.(x)) for x in eachrow(fX) ] # Bool vector
+    is_finite = [ all(isfinite.(x)) && any(x .!= 0) for x in eachrow(fX) ] # Bool vector
     fX = fX[is_finite,:] # remove NaNs from oob_decision_function_
     y = y[is_finite] .+ (1 - minimum(y)) # map to one-based labels
     if !t.is_probabilistic
