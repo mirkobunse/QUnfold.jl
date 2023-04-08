@@ -1,5 +1,5 @@
 if ".." ∉ LOAD_PATH push!(LOAD_PATH, "..") end # add QUnfold to the LOAD_PATH
-using ArgParse, DataFrames, Distributions, LinearAlgebra, Printf, QUnfoldExperiments, Random
+using ArgParse, CSV, DataFrames, Distributions, LinearAlgebra, Printf, QUnfoldExperiments, Random
 
 P_TRN = [ 0.09345, 0.07065, 0.09385, 0.16, 0.58205 ] # from github.com:mirkobunse/ecml22
 
@@ -25,7 +25,7 @@ function sample_app_oq(N, m=10000, keep=.2)
     return app[i]
 end
 
-_format(x) = if x < 1 @sprintf("%.5f", x)[2:end] else @sprintf("%.4f", x) end
+_format(x) = if x < 1 @sprintf("%.4f", x)[2:end] else @sprintf("%.3f", x) end
 
 function main(;
         input_path :: String = "amazon_books_stats.csv",

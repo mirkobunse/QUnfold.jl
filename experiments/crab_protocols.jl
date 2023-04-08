@@ -27,6 +27,10 @@ function main(;
         end
         for (protocol, samples) in [
                 "APP" => QUnfoldExperiments.sample_app(N, m),
+                "APP-OQ (80\\%)" => QUnfoldExperiments.sample_app_oq(N, m, .8, log10),
+                "APP-OQ (66\\%)" => QUnfoldExperiments.sample_app_oq(N, m, .66, log10),
+                "APP-OQ (50\\%)" => QUnfoldExperiments.sample_app_oq(N, m, .5, log10),
+                "APP-OQ (33\\%)" => QUnfoldExperiments.sample_app_oq(N, m, .33, log10),
                 "APP-OQ (20\\%)" => QUnfoldExperiments.sample_app_oq(N, m, .2, log10),
                 "APP-OQ (5\\%)" => QUnfoldExperiments.sample_app_oq(N, m, .05, log10),
                 "APP-OQ (1\\%)" => QUnfoldExperiments.sample_app_oq(N, m, .01, log10),
