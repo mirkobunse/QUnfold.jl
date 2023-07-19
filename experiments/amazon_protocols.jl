@@ -9,7 +9,7 @@ function curvature(p::AbstractVector{T}) where T<:Number
         0 => fill(2, length(P_TRN)),
         1 => fill(-1, length(P_TRN)-1)
     )[2:(length(P_TRN)-1), :]
-    return (t * p)' * (t * p) / 2 # 1/2 (Tp)^2
+    return (t * p)' * (t * p) / (1+min(5, length(P_TRN))) # 1/min(6,n+1) * (Tp)^2
 end
 
 sample_npp(N, m) = [ sample_npp(N) for _ in 1:m ]
