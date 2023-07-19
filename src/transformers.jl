@@ -139,7 +139,7 @@ struct FittedHistogramTransformer <: FittedTransformer
     preprocessor::Union{FittedTransformer,Nothing}
 end
 
-function _fit_transform(t::HistogramTransformer, X::Any, y::AbstractVector{T}) where {T<:Integer}
+function _fit_transform(t::HistogramTransformer, X::AbstractArray, y::AbstractVector{T}) where {T<:Integer}
     n_classes = length(unique(y))
     preprocessor, X, y = _fit_transform(t.preprocessor, X, y)
     f = FittedHistogramTransformer(

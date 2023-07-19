@@ -11,6 +11,8 @@ using
     Requires,
     StatsBase
 
+import PyCall, SparseArrays
+
 export
     ACC,
     CC,
@@ -100,6 +102,23 @@ Predict the class prevalences in the data set `X` with the fitted method `m`.
 """
 predict(m::FittedMethod, X::Any) =
     _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1))
+
+# TODO move all PyCall-related conversions to a separate submodule with optional PyCall dependency, using Requires.jl, instead of having the full package depend on PyCall
+fit(m::AbstractMethod, X::PyCall.PyObject, y::AbstractVector{T}) where {T<:Integer} =
+    fit(m, _to_jl_sparse_matrix(X), y)
+
+predict(m::FittedMethod, X::PyCall.PyObject) =
+    predict(m, _to_jl_sparse_matrix(X))
+
+const _SCIPY_SPARSE = PyCall.PyNULL()
+function _to_jl_sparse_matrix(X::PyCall.PyObject)
+    if PyCall.ispynull(_SCIPY_SPARSE)
+        copy!(_SCIPY_SPARSE, PyCall.pyimport_conda("scipy.sparse", "scipy"))
+    end
+    m, n = X.shape
+    I, J, V = _SCIPY_SPARSE.find(X)
+    return SparseArrays.sparse(I.+1, J.+1, V, m, n)
+end
 
 """
     predict_with_background(m, X, X_b, α=1) -> Vector{Float64}

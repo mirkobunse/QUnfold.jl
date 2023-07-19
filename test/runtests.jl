@@ -50,6 +50,13 @@ def paccPteCondEstim(classes, y, y_):
     return confusion.T
 """
 
+@testset "scipy.sparse support" begin
+    X = pyimport_conda("scipy.sparse", "scipy").csr_matrix(zeros(20,3))
+    y = StatsBase.sample(1:3, 10)
+    m = QUnfold.fit(HDx(3; strategy=:softmax), X, y)
+    QUnfold.predict(m, X)
+end
+
 @testset "Transfer matrix estimation" begin
     M_true = diagm(
         0 => rand(3) * .7 .+ .1,
