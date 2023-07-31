@@ -129,6 +129,7 @@ struct _ACC <: AbstractMethod
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg, :pinv, :inv, :ovr, :none}
     is_probabilistic::Bool
     τ::Float64 # regularization strength for o-ACC and o-PACC
+    order::Int # regularization order for o-ACC and o-PACC
     a::Vector{Float64} # acceptance factors for regularization
     fit_classifier::Bool
     oob_score::Bool # whether to use classifier.oob_decision_function_
@@ -145,6 +146,7 @@ A regularization strength `τ > 0` yields the o-ACC method for ordinal quantific
 
 - `strategy = :softmax` is the solution strategy (see below).
 - `τ = 0.0` is the regularization strength for o-ACC.
+- `order = 2` is the regularization order for o-ACC.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 - `fit_classifier = true` whether or not to fit the given `classifier`.
 - `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
@@ -165,11 +167,12 @@ For binary classification, ACC is proposed by Forman, 2008: *Quantifying counts 
 ACC(c::Any;
         strategy::Symbol = :softmax,
         τ::Float64 = 0.0,
+        order::Int = 2,
         a::Vector{Float64} = Float64[],
         fit_classifier::Bool = true,
         oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
         ) =
-    _ACC(c, strategy, false, τ, a, fit_classifier, oob_score)
+    _ACC(c, strategy, false, τ, order, a, fit_classifier, oob_score)
 
 """
     PACC(classifier; kwargs...)
@@ -182,6 +185,7 @@ A regularization strength `τ > 0` yields the o-PACC method for ordinal quantifi
 
 - `strategy = :softmax` is the solution strategy (see below).
 - `τ = 0.0` is the regularization strength for o-PACC.
+- `order = 2` is the regularization order for o-PACC.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 - `fit_classifier = true` whether or not to fit the given `classifier`.
 - `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
@@ -202,11 +206,12 @@ For binary classification, PACC is proposed by Bella et al., 2010: *Quantificati
 PACC(c::Any;
         strategy::Symbol = :softmax,
         τ::Float64 = 0.0,
+        order::Int = 2,
         a::Vector{Float64} = Float64[],
         fit_classifier::Bool = true,
         oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
         ) =
-    _ACC(c, strategy, true, τ, a, fit_classifier, oob_score)
+    _ACC(c, strategy, true, τ, order, a, fit_classifier, oob_score)
 
 """
     CC(classifier; kwargs...)
@@ -222,7 +227,7 @@ CC(c::Any;
         fit_classifier::Bool = true,
         oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
         ) =
-    _ACC(c, :none, false, 0.0, Float64[], fit_classifier, oob_score)
+    _ACC(c, :none, false, 0.0, 0, Float64[], fit_classifier, oob_score)
 
 """
     PCC(classifier; kwargs...)
@@ -238,7 +243,7 @@ PCC(c::Any;
         fit_classifier::Bool = true,
         oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
         ) =
-    _ACC(c, :none, true, 0.0, Float64[], fit_classifier, oob_score)
+    _ACC(c, :none, true, 0.0, 0, Float64[], fit_classifier, oob_score)
 
 _transformer(m::_ACC) =
     ClassTransformer(
@@ -250,7 +255,7 @@ _transformer(m::_ACC) =
 
 _solve(m::_ACC, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int) =
     if m.strategy ∈ [:constrained, :softmax, :softmax_reg, :softmax_full_reg]
-        solve_least_squares(M, q, N; τ=m.τ, a=m.a, strategy=m.strategy)
+        solve_least_squares(M, q, N; τ=m.τ, order=m.order, a=m.a, strategy=m.strategy)
     elseif m.strategy == :pinv
         if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
             nonzero = sum(M; dims=2)[:] .> 0
@@ -278,6 +283,7 @@ struct _RUN_SVD <: AbstractMethod
     transformer::Union{AbstractTransformer,FittedTransformer}
     loss::Symbol # ∈ {:run, :svd}
     τ::Float64 # regularization strength
+    order::Int # regularization order
     n_df::Int # alternative regularization strength
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg, :unconstrained}
@@ -292,6 +298,7 @@ The Regularized Unfolding method by Blobel, 1985: *Unfolding methods in high-ene
 
 - `strategy = :softmax` is the solution strategy (see below).
 - `τ = 1e-6` is the regularization strength for ordinal quantification.
+- `order = 2` is the regularization order for ordinal quantification.
 - `n_df = -1` (only used if `strategy==:original`) is the effective number of degrees of freedom, required to be `0 < n_df <= C` where `C` is the number of classes.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 
@@ -307,8 +314,8 @@ Blobel's loss function, feature transformation, and regularization can be optimi
 - `:unconstrained` (our method) is similar to `:original`, but uses a more generic solver.
 - `:positive` (our method) is `:constrained` without the sum constraint.
 """
-RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:softmax) =
-    _RUN_SVD(transformer, :run, τ, n_df, a, strategy)
+RUN(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, order::Int=2, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:softmax) =
+    _RUN_SVD(transformer, :run, τ, order, n_df, a, strategy)
 
 """
     SVD(transformer; kwargs...)
@@ -319,6 +326,7 @@ The The Singular Value Decomposition-based unfolding method by Hoecker & Kartvel
 
 - `strategy = :softmax` is the solution strategy (see below).
 - `τ = 1e-6` is the regularization strength for ordinal quantification.
+- `order = 2` is the regularization order for ordinal quantification.
 - `n_df = -1` (only used if `strategy==:original`) is the effective rank, required to be `0 < n_df < C` where `C` is the number of classes.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 
@@ -333,16 +341,16 @@ Hoecker & Kartvelishvili's loss function, feature transformation, and regulariza
 - `:softmax_reg` (our method) is a variant of `:softmax`, which sets one latent parameter to zero in addition to introducing a technical regularization term.
 - `:unconstrained` (our method) is similar to `:original`, but uses a more generic solver.
 """
-SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:softmax) =
-    _RUN_SVD(transformer, :svd, τ, n_df, a, strategy)
+SVD(transformer::Union{AbstractTransformer,FittedTransformer}; τ::Float64=1e-6, order=2, n_df::Int=-1, a::Vector{Float64}=Float64[], strategy=:softmax) =
+    _RUN_SVD(transformer, :svd, τ, order, n_df, a, strategy)
 _transformer(m::_RUN_SVD) = m.transformer
 _solve(m::_RUN_SVD, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q))) =
     if m.loss == :run
-        solve_maximum_likelihood(M, q, N, b; τ=m.τ, n_df=m.n_df > 0 ? m.n_df : size(M, 2), a=m.a, strategy=m.strategy)
+        solve_maximum_likelihood(M, q, N, b; τ=m.τ, order=m.order, n_df=m.n_df > 0 ? m.n_df : size(M, 2), a=m.a, strategy=m.strategy)
     elseif m.loss == :svd # weighted least squares
         strategy = m.strategy == :original ? :svd : m.strategy # rename :original -> :svd
         n_df = m.n_df > 0 ? m.n_df : size(M, 2)
-        solve_least_squares(M, q, N; w=_svd_weights(q, N), τ=m.τ, n_df=n_df, a=m.a, strategy=strategy)
+        solve_least_squares(M, q, N; w=_svd_weights(q, N), τ=m.τ, order=m.order, n_df=n_df, a=m.a, strategy=strategy)
     else
         error("There is no loss \"$(m.loss)\"")
     end
@@ -365,6 +373,7 @@ The parameter `n_bins` specifies the number of bins *per feature*. A regularizat
 
 - `strategy = :softmax` is the solution strategy (see below).
 - `τ = 0.0` is the regularization strength for o-HDx.
+- `order = 2` is the regularization order for o-HDx.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 
 **Strategies**
@@ -379,10 +388,11 @@ González-Castro et al.'s loss function and feature transformation can be optimi
 struct HDx <: AbstractMethod
     n_bins::Int
     τ::Float64 # regularization strength
+    order::Int # regularization order
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg}
-    HDx(n_bins::Int; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy=:softmax) =
-        new(n_bins, τ, a, strategy)
+    HDx(n_bins::Int; τ::Float64=0.0, order::Int=2, a::Vector{Float64}=Float64[], strategy=:softmax) =
+        new(n_bins, τ, order, a, strategy)
 end
 
 """
@@ -396,6 +406,7 @@ The parameter `n_bins` specifies the number of bins *per class*. A regularizatio
 
 - `strategy = :softmax` is the solution strategy (see below).
 - `τ = 0.0` is the regularization strength for o-HDx.
+- `order = 2` is the regularization order for o-HDx.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 - `fit_classifier = true` whether or not to fit the given `classifier`.
 - `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
@@ -413,18 +424,20 @@ struct HDy <: AbstractMethod
     classifier::Any
     n_bins::Int
     τ::Float64 # regularization strength
+    order::Int # regularization order
     a::Vector{Float64} # acceptance factors for regularization
     strategy::Symbol # ∈ {:constrained, :softmax, :softmax_reg, :softmax_full_reg}
     fit_classifier::Bool
     oob_score::Bool # whether to use classifier.oob_decision_function_
     HDy(c::Any, n_bins::Int;
             τ::Float64 = 0.0,
+            order::Int = 2,
             a::Vector{Float64} = Float64[],
             strategy = :softmax,
             fit_classifier::Bool = true,
             oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score
             ) =
-        new(c, n_bins, τ, a, strategy, fit_classifier, oob_score)
+        new(c, n_bins, τ, order, a, strategy, fit_classifier, oob_score)
 end
 _transformer(m::HDx) = HistogramTransformer(m.n_bins)
 _transformer(m::HDy) = HistogramTransformer(
@@ -437,7 +450,7 @@ _transformer(m::HDy) = HistogramTransformer(
         )
     )
 _solve(m::Union{HDx,HDy}, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q))) =
-    solve_hellinger_distance(M, q, N, m.n_bins, b; τ=m.τ, a=m.a, strategy=m.strategy)
+    solve_hellinger_distance(M, q, N, m.n_bins, b; τ=m.τ, order=m.order, a=m.a, strategy=m.strategy)
 
 
 # IBU and SLD
@@ -522,6 +535,7 @@ struct _EDX <: AbstractMethod
     distance::PreMetric # requires δ(x,y) ≥ 0, but not symmetry
     strategy::Symbol # ∈ {:softmax, :original}
     τ::Float64 # regularization strength
+    order::Int # regularization order
     a::Vector{Float64} # acceptance factors for regularization
     preprocessor::Union{AbstractTransformer,Nothing}
 end
@@ -543,16 +557,18 @@ The energy distance method EDX.
 
 - `distance = Euclidean()` is the distance metric between data items.
 - `strategy = :softmax` is the solution strategy (see below).
-- `τ = 0` is the regularization strength for ordinal quantification.
+- `τ = 0` is the regularization strength for o-EDX.
+- `order = 2` is the regularization order for o-EDX.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 """
 EDX(;
         distance::PreMetric = Euclidean(),
         strategy = :softmax,
         τ::Float64 = 0.,
+        order::Int = 2,
         a::Vector{Float64} = Float64[]
         ) =
-    _EDX(distance, strategy, τ, a, nothing)
+    _EDX(distance, strategy, τ, order, a, nothing)
 
 """
     EDy(classifier; kwargs...)
@@ -564,7 +580,8 @@ The energy distance method EDy.
 - `fit_classifier = true` whether or not to fit the given `classifier`.
 - `distance = Euclidean()` is the distance metric between predictions.
 - `strategy = :softmax` is the solution strategy (see below).
-- `τ = 0` is the regularization strength for ordinal quantification.
+- `τ = 0` is the regularization strength for o-EDy.
+- `order = 2` is the regularization order for o-EDy.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 """
 EDy(classifier;
@@ -572,9 +589,10 @@ EDy(classifier;
         fit_classifier::Bool = true,
         strategy = :softmax,
         τ::Float64 = 0.,
+        order::Int = 2,
         a::Vector{Float64} = Float64[]
         ) =
-    _EDX(distance, strategy, τ, a, ClassTransformer(
+    _EDX(distance, strategy, τ, order, a, ClassTransformer(
         classifier;
         fit_classifier = fit_classifier,
         is_probabilistic = true
@@ -599,6 +617,7 @@ function predict(m::_FittedEDX, X::Any)
     end
     return solve_energy_distance(m.A, s;
         τ = m.method.τ,
+        order = m.method.order,
         a = m.method.a,
         strategy = m.method.strategy
     )
@@ -650,6 +669,7 @@ The PDF method.
 - `distance = Euclidean()` is the distance between prevalence vectors.
 - `strategy = :softmax` is the solution strategy (see below).
 - `τ = 0.0` is the regularization strength for o-PDF.
+- `order = 2` is the regularization order for o-PDF.
 - `a = Float64[]` are the acceptance factors for unfolding analyses.
 - `fit_classifier = true` whether or not to fit the given `classifier`.
 - `oob_score = hasproperty(classifier, :oob_score) && classifier.oob_score` whether to use `classifier.oob_decision_function_` or `classifier.predict_proba(X)` for fitting `M`.
@@ -665,6 +685,7 @@ struct PDF <: AbstractMethod
     distance::PreMetric # requires δ(x,y) ≥ 0, but not symmetry
     strategy::Symbol # ∈ {:softmax, :original}
     τ::Float64 # regularization strength
+    order::Int # regularization order
     a::Vector{Float64} # acceptance factors for regularization
     fit_classifier::Bool
     oob_score::Bool # whether to use classifier.oob_decision_function_
@@ -672,11 +693,12 @@ struct PDF <: AbstractMethod
             distance::PreMetric = Euclidean(),
             strategy::Symbol = :softmax,
             τ::Float64 = 0.0,
+            order::Int = 2,
             a::Vector{Float64} = Float64[],
             fit_classifier::Bool = true,
             oob_score::Bool = hasproperty(c, :oob_score) && c.oob_score,
             ) =
-        new(c, n_bins, distance, strategy, τ, a, fit_classifier, oob_score)
+        new(c, n_bins, distance, strategy, τ, order, a, fit_classifier, oob_score)
 end
 
 _transformer(m::PDF) =
@@ -691,7 +713,7 @@ _transformer(m::PDF) =
     )
 
 _solve(m::PDF, M::Matrix{Float64}, q::Vector{Float64}, p_trn::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q))) =
-    solve_pdf(M, q; τ=m.τ, a=m.a, strategy=m.strategy, distance=m.distance)
+    solve_pdf(M, q; τ=m.τ, order=m.order, a=m.a, strategy=m.strategy, distance=m.distance)
 
 struct EarthMoversSurrogate{T<:PreMetric} <: SemiMetric
     ground_distance::T

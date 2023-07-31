@@ -28,10 +28,21 @@ function _check_solver_args(M::AbstractMatrix{Float64}, q::AbstractVector{Float6
     end
 end
 
+function _tikhonov_matrix(C::Int, order::Int)
+    L_1 = (1/2) * LinearAlgebra.diagm(0 => fill(1, C), 1 => fill(-1, C-1)) # first derivative
+    T = LinearAlgebra.diagm(0 => fill(1, C)) # order=0 minimizes the norm of p
+    for o in 1:order
+        T = T' * L_1 # = L_1' * L_1, (L_1' * L_1)' * L_1, ...
+    end
+    first_index = Int(floor(order/2)) + 1 # 1, 1, 2, 2, 3, 3, ... for order = 0, 1, 2, ...
+    last_index = C - Int(ceil(order/2)) # C, C-1, C-1, C-2, C-2, ... for order = 0, 1, 2, ...
+    return T[first_index:last_index, :]
+end
+
 
 # solvers
 
-function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, n_df::Int=size(M, 2), a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, λ::Float64=1e-6)
+function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::Vector{Float64}=ones(length(q)), τ::Float64=0.0, order::Int=2, n_df::Int=size(M, 2), a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, λ::Float64=1e-6)
     _check_solver_args(M, q)
     if !all(isfinite.(w))
         throw(ArgumentError("Not all values in w are finite"))
@@ -65,11 +76,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
 
     model = Model(Ipopt.Optimizer)
     set_silent(model)
-    T = LinearAlgebra.diagm( # the Tikhonov matrix for optional curvature regularization
-        -1 => fill(-1, C-1),
-        0 => fill(2, C),
-        1 => fill(-1, C-1)
-    )[2:(C-1), :]
+    T = _tikhonov_matrix(C, order)
 
     # least squares ||q - M*p||_2^2
     if strategy in [:softmax, :softmax_reg]
@@ -84,16 +91,16 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
         else
             @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
         end
-        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+        @NLexpression(model, Tp[i = 1:size(T,1)], sum(T[i, j] * p_reg[j] for j in 1:C))
         if strategy == :softmax
             @NLobjective(model, Min,
                 sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
-                + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+                + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
             )
         else
             @NLobjective(model, Min,
                 sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F)
-                + τ/2 * sum(Tp[i]^2 for i in 1:(C-2))
+                + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1))
                 + λ * sum(l[j]^2 for j in 1:(C-1)) # soft-max regularization
             )
         end
@@ -105,28 +112,28 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
         else
             @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
         end
-        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+        @NLexpression(model, Tp[i = 1:size(T,1)], sum(T[i, j] * p_reg[j] for j in 1:C))
         @NLobjective(model, Min,
             sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
-            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+            + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
             + λ * sum(l[j]^2 for j in 1:C) # soft-max regularization
         )
     elseif strategy == :constrained && length(a) == 0 # quadratic objective without NL prefix
         @variable(model, p[1:C] ≥ 0) # p_i ≥ 0
         @constraint(model, ones(C)' * p == 1) # 1' * p = 1
-        @expression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p[j] for j in 1:C))
+        @expression(model, Tp[i = 1:size(T,1)], sum(T[i, j] * p[j] for j in 1:C))
         @objective(model, Min,
             sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
-            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+            + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
         )
     elseif strategy == :constrained # NL prefix needed
         @variable(model, p[1:C] ≥ 0) # p_i ≥ 0
         @NLconstraint(model, sum(p[i] for i in 1:C) == 1) # 1' * p = 1
         @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
-        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+        @NLexpression(model, Tp[i = 1:size(T,1)], sum(T[i, j] * p_reg[j] for j in 1:C))
         @NLobjective(model, Min,
             sum(((q[i] - sum(M[i, j] * p[j] for j in 1:C)) / w[i])^2 for i in 1:F) # loss function
-            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+            + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
         )
     else
         error("There is no strategy \"$(strategy)\"")
@@ -146,7 +153,7 @@ function solve_least_squares(M::Matrix{Float64}, q::Vector{Float64}, N::Int; w::
 end
 
 
-function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, n_df::Int=size(M, 2), λ::Float64=1e-6)
+function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, order::Int=2, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, n_df::Int=size(M, 2), λ::Float64=1e-6)
     _check_solver_args(M, q)
     if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
         nonzero = sum(M; dims=2)[:] .> 0
@@ -155,11 +162,7 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
         b = b[nonzero]
     end
     F, C = size(M) # the numbers of features and classes
-    T = LinearAlgebra.diagm( # the Tikhonov matrix for curvature regularization
-        -1 => fill(-1, C-1),
-        0 => fill(2, C),
-        1 => fill(-1, C-1)
-    )[2:(C-1), :]
+    T = _tikhonov_matrix(C, order)
 
     if strategy == :original # here, we assume p contains counts, not probabilities
         q = 1 .+ (N-C) .* q # transform q to \bar{q}
@@ -274,13 +277,13 @@ function solve_maximum_likelihood(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * N * p[j] for j in 1:C))
     if length(a) > 0
         @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
-        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+        @NLexpression(model, Tp[i = 1:size(T,1)], sum(T[i, j] * p_reg[j] for j in 1:C))
     else # just regularize 1/2*(Tp)^2
-        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p[j] for j in 1:C))
+        @NLexpression(model, Tp[i = 1:size(T,1)], sum(T[i, j] * p[j] for j in 1:C))
     end
     @NLobjective(model, Min,
         sum(Mp[i] - q[i] * log(Mp[i]) for i in 1:F) # loss function
-        + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+        + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
         + softmax_regularizer # optional soft-max regularization
     )
 
@@ -318,7 +321,7 @@ function _select_τ(n_df::Number, eigvals_T::Vector{Float64}, min::Float64=-12.0
 end
 
 
-function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int, n_bins::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, λ::Float64=1e-6, n_trials=10)
+function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int, n_bins::Int, b::Vector{Float64}=zeros(length(q)); τ::Float64=0.0, order::Int=2, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, λ::Float64=1e-6, n_trials=10)
     _check_solver_args(M, q)
     indices = [ (1+(i-1)*n_bins):(i*n_bins) for i in 1:Int(size(M, 1) / n_bins) ]
     if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
@@ -343,11 +346,7 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     set_silent(model)
     F, C = size(M) # the numbers of "multi-features" and classes
     n_features = length(indices) # the number of actual features in X
-    T = LinearAlgebra.diagm( # the Tikhonov matrix for curvature regularization
-        -1 => fill(-1, C-1),
-        0 => fill(2, C),
-        1 => fill(-1, C-1)
-    )[2:(C-1), :]
+    T = _tikhonov_matrix(C, order)
 
     # set up the solution vector p
     if strategy in [:softmax, :softmax_reg]
@@ -385,10 +384,10 @@ function solve_hellinger_distance(M::Matrix{Float64}, q::Vector{Float64}, N::Int
     else
         @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
     end
-    @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+    @NLexpression(model, Tp[i = 1:size(T,1)], sum(T[i, j] * p_reg[j] for j in 1:C))
     @NLobjective(model, Min,
         sum(HD[i] for i in 1:n_features) / n_features # loss function
-        + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+        + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
         + softmax_regularizer # optional soft-max regularization
     )
 
@@ -468,7 +467,7 @@ function _smooth(p_est::Vector{Float64}, N::Int, o::Int, λ::Float64, a::Vector{
     return p_o ./= sum(p_o) # normalize again
 end
 
-function solve_energy_distance(A::Symmetric{Float64,Matrix{Float64}}, s::Vector{Float64}; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax)
+function solve_energy_distance(A::Symmetric{Float64,Matrix{Float64}}, s::Vector{Float64}; τ::Float64=0.0, order::Int=2, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax)
     _check_solver_args(A, s)
     C = length(s) # the number of classes
     model = Model(Ipopt.Optimizer)
@@ -481,20 +480,16 @@ function solve_energy_distance(A::Symmetric{Float64,Matrix{Float64}}, s::Vector{
             p[i] = @NLexpression(model, exp(l[i]) / (1 + sum(exp(l[j]) for j in 1:(C-1))))
         end
         p[C] = @NLexpression(model, 1 / (1 + sum(exp(l[j]) for j in 1:(C-1))))
-        T = LinearAlgebra.diagm( # the Tikhonov matrix for optional curvature regularization
-            -1 => fill(-1, C-1),
-            0 => fill(2, C),
-            1 => fill(-1, C-1)
-        )[2:(C-1), :]
+        T = _tikhonov_matrix(C, order)
         if length(a) > 0
             @NLexpression(model, p_reg[i = 1:C], log10(1 + a[i] * p[i] * (N-C) / sum(a[j]*p[j] for j in 1:C)))
         else
             @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
         end
-        @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+        @NLexpression(model, Tp[i = 1:size(T,1)], sum(T[i, j] * p_reg[j] for j in 1:C))
         @NLobjective(model, Min,
             sum(2 * p[j] * s[j] - sum(A[i,j] * p[i] for i in 1:C) * p[j] for j in 1:C)
-            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+            + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
         )
     elseif strategy == :original # p_prime[i] = p[i] for i in 1:(C-1)
         @variable(model, l[1:(C-1)] >= 0) # p_prime
@@ -531,7 +526,7 @@ function _Bt(A::Symmetric{Float64,Matrix{Float64}}, s::Vector{Float64})
     return Symmetric(B), t
 end
 
-function solve_pdf(M::Matrix{Float64}, q::Vector{Float64}; τ::Float64=0.0, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, distance::PreMetric=Euclidean())
+function solve_pdf(M::Matrix{Float64}, q::Vector{Float64}; τ::Float64=0.0, order::Int=2, a::Vector{Float64}=Float64[], strategy::Symbol=:softmax, distance::PreMetric=Euclidean())
     _check_solver_args(M, q)
     if any(sum(M; dims=2) .== 0) # limit the estimation to non-zero features
         nonzero = sum(M; dims=2)[:] .> 0
@@ -539,11 +534,7 @@ function solve_pdf(M::Matrix{Float64}, q::Vector{Float64}; τ::Float64=0.0, a::V
         M = M[nonzero, :]
     end
     F, C = size(M) # the numbers of features and classes
-    T = LinearAlgebra.diagm( # the Tikhonov matrix for optional curvature regularization
-        -1 => fill(-1, C-1),
-        0 => fill(2, C),
-        1 => fill(-1, C-1)
-    )[2:(C-1), :]
+    T = _tikhonov_matrix(C, order)
 
     model = Model(Ipopt.Optimizer)
     set_silent(model)
@@ -565,26 +556,26 @@ function solve_pdf(M::Matrix{Float64}, q::Vector{Float64}; τ::Float64=0.0, a::V
     else
         @NLexpression(model, p_reg[i = 1:C], p[i]) # just regularize 1/2*(Tp)^2
     end
-    @NLexpression(model, Tp[i = 1:(C-2)], sum(T[i, j] * p_reg[j] for j in 1:C))
+    @NLexpression(model, Tp[i = 1:size(T,1)], sum(T[i, j] * p_reg[j] for j in 1:C))
     @NLexpression(model, Mp[i = 1:F], sum(M[i, j] * p[j] for j in 1:C))
     if typeof(distance) <: Euclidean
         @NLobjective(model, Min,
             sum((q[i] - Mp[i])^2 for i in 1:F) # L2 norm between PDFs
-            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+            + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
         )
     elseif typeof(distance) <: EarthMovers{Cityblock}
         q_cdf = cumsum(q)[1:end-1] # last element is 1
         @NLexpression(model, Mp_cdf[i = 1:(F-1)], sum(Mp[j] for j in 1:i))
         @NLobjective(model, Min,
             sum(abs(q_cdf[i] - Mp_cdf[i]) for i in 1:(F-1)) # L1 norm between CDFs = EMD
-            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+            + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
         )
     elseif typeof(distance) <: EarthMoversSurrogate{Cityblock}
         q_cdf = cumsum(q)[1:end-1] # last element is 1
         @NLexpression(model, Mp_cdf[i = 1:(F-1)], sum(Mp[j] for j in 1:i))
         @NLobjective(model, Min,
             sum((q_cdf[i] - Mp_cdf[i])^2 for i in 1:(F-1)) # L2 norm between CDFs
-            + τ/2 * sum(Tp[i]^2 for i in 1:(C-2)) # Tikhonov regularization
+            + τ/2 * sum(Tp[i]^2 for i in 1:size(T,1)) # Tikhonov regularization
         )
     end
 

@@ -1,5 +1,6 @@
 using
     LinearAlgebra,
+    Polynomials,
     PyCall,
     QUnfold,
     Random,
@@ -49,6 +50,39 @@ def paccPteCondEstim(classes, y, y_):
             confusion[i] = y_[idx].mean(axis=0)
     return confusion.T
 """
+
+function _random_polynomial_p(C::Int, degree::Int)
+    β = [ sign(β_i) * max(.1, abs(β_i)) for β_i in randn(4) ]
+    β[(2+degree):end] .= 0 # limit the degree
+    return map(x -> β[4]*x^3 + β[3]*x^2 + β[2]*x + β[1], 1:C)
+end
+
+@testset "Tikhonov matrix construction" begin
+    # some concrete examples [huang2016regularization]
+    @test QUnfold._tikhonov_matrix(4, 1) == .5 * [1 -1 0 0; 0 1 -1 0; 0 0 1 -1]
+    @test QUnfold._tikhonov_matrix(4, 2) == .25 * [-1 2 -1 0; 0 -1 2 -1]
+
+    # more general tests about zero and non-zero derivatives of polynomials
+    ϵ = sqrt(eps(Float64))
+    for C in 3:12 # number of classes
+        for order in 1:min(3, C-3)
+            T = QUnfold._tikhonov_matrix(C, order)
+            p_below = _random_polynomial_p(C, order-1) # degree = order-1 -> zero derivative
+            p_coeffs = Polynomials.fit(collect(1:C), p_below, order).coeffs
+            if length(p_coeffs) == order+1 # the usual case
+                @test all(abs.(p_coeffs[1:end-1]) .> ϵ) # test _random_polynomial_p
+                @test abs(p_coeffs[end]) < ϵ
+            else
+                @test all(abs.(p_coeffs) .> ϵ)
+            end
+            Tp_below = T * p_below
+            @test LinearAlgebra.dot(Tp_below, Tp_below) < ϵ # = (T*p)^2
+            p_above = _random_polynomial_p(C, order) # degree = order -> non-zero derivative
+            Tp_above = T * p_above
+            @test LinearAlgebra.dot(Tp_above, Tp_above) > ϵ
+        end
+    end
+end
 
 @testset "Transfer matrix estimation" begin
     M_true = diagm(
@@ -119,12 +153,14 @@ t2 = TreeTransformer(
 for (name, method) in [
         "o-ACC (constrained, τ=10.0)" => ACC(c; τ=10.0, strategy=:constrained),
         "ACC (constrained)" => ACC(c; strategy=:constrained),
-        "ACC (softmax)" => ACC(c; strategy=:softmax),
+        "o-ACC (softmax, τ=10.0)" => ACC(c; strategy=:softmax, τ=10.0),
+        "o-ACC (softmax, τ=10.0, order=1)" => ACC(c; strategy=:softmax, τ=10.0, order=1),
+        "o-ACC (softmax, τ=10.0, order=3)" => ACC(c; strategy=:softmax, τ=10.0, order=3),
         "ACC (softmax_reg)" => ACC(c; strategy=:softmax_reg),
         "ACC (softmax_full_reg)" => ACC(c; strategy=:softmax_full_reg),
         "ACC (pinv)" => ACC(c; strategy=:pinv),
         "CC" => CC(c),
-        "o-PACC (constrained, τ=10.0)" => PACC(c; τ=10.0, strategy=:constrained),
+        "o-PACC (constrained, τ=10.0, order=1)" => PACC(c; τ=10.0, strategy=:constrained, order=1),
         "PACC (constrained)" => PACC(c; strategy=:constrained),
         "PACC (softmax)" => PACC(c; strategy=:softmax),
         "PACC (softmax_reg)" => PACC(c; strategy=:softmax_reg),
@@ -133,14 +169,14 @@ for (name, method) in [
         "PCC" => PCC(c),
         "RUN (positive, τ=1e-6)" => RUN(t1; strategy=:positive, τ=1e-6),
         "RUN (constrained, τ=1e-6)" => RUN(t1; strategy=:constrained, τ=1e-6),
-        "RUN (softmax, τ=1e-6)" => RUN(t1; strategy=:softmax, τ=1e-6),
+        "RUN (softmax, τ=1e-6, order=1)" => RUN(t1; strategy=:softmax, τ=1e-6, order=1),
         "RUN (softmax_reg, τ=1e-6)" => RUN(t1; strategy=:softmax_reg, τ=1e-6),
         "RUN (softmax_full_reg, τ=1e-6)" => RUN(t1; strategy=:softmax_full_reg, τ=1e-6),
         "RUN (constrained, τ=10.0)" => RUN(t2; strategy=:constrained, τ=10.0),
         "RUN (softmax, τ=10.0)" => RUN(t2; strategy=:softmax, τ=10.0),
         "RUN (softmax_reg, τ=10.0)" => RUN(t2; strategy=:softmax_reg, τ=10.0),
         "RUN (softmax_full_reg, τ=10.0)" => RUN(t2; strategy=:softmax_full_reg, τ=10.0),
-        "SVD (constrained, τ=1e-6)" => QUnfold.SVD(t1; strategy=:constrained, τ=1e-6),
+        "SVD (constrained, τ=1e-6, order=1)" => QUnfold.SVD(t1; strategy=:constrained, τ=1e-6, order=1),
         "SVD (softmax, τ=1e-6)" => QUnfold.SVD(t1; strategy=:softmax, τ=1e-6),
         "SVD (softmax_reg, τ=1e-6)" => QUnfold.SVD(t1; strategy=:softmax_reg, τ=1e-6),
         "SVD (softmax_full_reg, τ=1e-6)" => QUnfold.SVD(t1; strategy=:softmax_full_reg, τ=1e-6),
@@ -148,12 +184,12 @@ for (name, method) in [
         "SVD (softmax, τ=10.0)" => QUnfold.SVD(t1; strategy=:softmax, τ=10.0),
         "SVD (softmax_reg, τ=10.0)" => QUnfold.SVD(t1; strategy=:softmax_reg, τ=10.0),
         "SVD (softmax_full_reg, τ=10.0)" => QUnfold.SVD(t1; strategy=:softmax_full_reg, τ=10.0),
-        "o-HDx (constrained, τ=10.0)" => HDx(3; τ=10.0, strategy=:constrained),
+        "o-HDx (constrained, τ=10.0, order=1)" => HDx(3; τ=10.0, strategy=:constrained, order=1),
         "HDx (softmax_reg)" => HDx(3; strategy=:softmax_reg),
         "HDx (softmax_full_reg)" => HDx(3; strategy=:softmax_full_reg),
         "HDx (constrained)" => HDx(15; strategy=:constrained),
         "HDx (softmax)" => HDx(3; strategy=:softmax),
-        "o-HDy (constrained, τ=10.0)" => HDy(c, 3; τ=10.0, strategy=:constrained),
+        "o-HDy (constrained, τ=10.0, order=1)" => HDy(c, 3; τ=10.0, strategy=:constrained, order=1),
         "HDy (softmax_reg)" => HDy(c, 3; strategy=:softmax_reg),
         "HDy (softmax_full_reg)" => HDy(c, 3; strategy=:softmax_full_reg),
         "HDy (constrained)" => HDy(c, 3; strategy=:constrained),
@@ -164,11 +200,11 @@ for (name, method) in [
         "IBU (o=0, λ=.1, n_iterations=1)" => IBU(t1; o=0, λ=.1, n_iterations=1),
         "IBU (o=0, λ=.1, ϵ=Inf)" => IBU(t1; o=0, λ=.1, ϵ=Inf),
         "o-SLD (o=0, λ=.1)" => SLD(c; o=0, λ=.1),
-        "EDX (softmax)" => EDX(),
+        "o-EDX (softmax, τ=10, order=1)" => EDX(τ=10., order=1),
         "EDX (original)" => EDX(; strategy=:original),
-        "o-EDy (softmax, τ=10)" => EDy(c; τ=10.),
+        "o-EDy (softmax, τ=10, order=1)" => EDy(c; τ=10., order=1),
         "EDy (EMD, softmax)" => EDy(c; distance=EarthMovers()),
-        "o-PDF (EMD, J=16, τ=10, softmax)" => PDF(c, 16; τ=10., distance=EarthMovers()),
+        "o-PDF (EMD, J=16, τ=10, softmax, order=1)" => PDF(c, 16; τ=10., distance=EarthMovers(), order=1),
         "o-PDF (EMD, J=16, τ=10, constrained)" => PDF(c, 16; τ=10., distance=EarthMovers(), strategy=:constrained),
         "PDF (L2, J=16, softmax)" => PDF(c, 16),
         "PDF (L2, J=16, constrained)" => PDF(c, 16; strategy=:constrained),
