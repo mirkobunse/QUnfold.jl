@@ -76,10 +76,28 @@ end
                 @test all(abs.(p_coeffs) .> ϵ)
             end
             Tp_below = T * p_below
-            @test LinearAlgebra.dot(Tp_below, Tp_below) < ϵ # = (T*p)^2
+            phi_below = LinearAlgebra.dot(Tp_below, Tp_below)
+            @test phi_below < ϵ # = (T*p)^2
             p_above = _random_polynomial_p(C, order) # degree = order -> non-zero derivative
             Tp_above = T * p_above
-            @test LinearAlgebra.dot(Tp_above, Tp_above) > ϵ
+            phi_above = LinearAlgebra.dot(Tp_above, Tp_above)
+            @test phi_above > ϵ
+            if order == 1
+                @test phi_below ≈
+                    sum([(p_below[i]-p_below[i+1])^2 for i in 1:(C-1)])/4 atol=ϵ
+                @test phi_above ≈
+                    sum([(p_above[i]-p_above[i+1])^2 for i in 1:(C-1)])/4 atol=ϵ
+            elseif order == 2
+                @test phi_below ≈
+                    sum([(-p_below[i-1]+2*p_below[i]-p_below[i+1])^2 for i in 2:(C-1)])/16 atol=ϵ
+                @test phi_above ≈
+                    sum([(-p_above[i-1]+2*p_above[i]-p_above[i+1])^2 for i in 2:(C-1)])/16 atol=ϵ
+            elseif order == 3
+                @test phi_below ≈
+                    sum([(-p_below[i-1]+3*p_below[i]-3*p_below[i+1]+p_below[i+2])^2 for i in 2:(C-2)])/64 atol=ϵ
+                @test phi_above ≈
+                    sum([(-p_above[i-1]+3*p_above[i]-3*p_above[i+1]+p_above[i+2])^2 for i in 2:(C-2)])/64 atol=ϵ
+            end
         end
     end
 end
