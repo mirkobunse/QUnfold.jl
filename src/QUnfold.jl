@@ -7,6 +7,7 @@ using
     JuMP,
     LinearAlgebra,
     Preferences,
+    PyCall,
     Random,
     Requires,
     StatsBase
@@ -99,7 +100,10 @@ end
 Predict the class prevalences in the data set `X` with the fitted method `m`.
 """
 predict(m::FittedMethod, X::Any) =
-    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1))
+    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, _size(X, 1))
+
+_size(X::PyObject, i::Integer) = X.shape[i]
+_size(X::Any, i::Integer) = size(X, i)
 
 """
     predict_with_background(m, X, X_b, α=1) -> Vector{Float64}
@@ -109,8 +113,8 @@ method `m`, taking into account a background measurement `X_b` that is scaled
 by `α`.
 """
 predict_with_background(m::FittedMethod, X::Any, X_b::Any, α::Float64=1.) =
-    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1), (α * size(X_b, 1) / size(X, 1)) .* mean(_transform(m.f, X_b), dims=1)[:])
-    # _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, size(X, 1), α, Float64.(sum(_transform(m.f, X_b), dims=1)[:]))
+    _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, _size(X, 1), (α * _size(X_b, 1) / _size(X, 1)) .* mean(_transform(m.f, X_b), dims=1)[:])
+    # _solve(m.method, m.M, mean(_transform(m.f, X), dims=1)[:], m.p_trn, _size(X, 1), α, Float64.(sum(_transform(m.f, X_b), dims=1)[:]))
 
 
 # utility methods
@@ -521,8 +525,8 @@ end
 predict(m::FittedMethod{SLD,FittedClassTransformer}, X::Any) =
     solve_expectation_maximization(
         _transform(m.f, X) ./ m.p_trn', # M = h(x) / p_trn
-        ones(size(X, 1)) ./ size(X, 1), # q = 1/N
-        size(X, 1), # N
+        ones(_size(X, 1)) ./ _size(X, 1), # q = 1/N
+        _size(X, 1), # N
         m.p_trn; # p_0 = p_trn
         o = m.method.o,
         λ = m.method.λ,
