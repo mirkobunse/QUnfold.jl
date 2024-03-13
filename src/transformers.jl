@@ -153,16 +153,16 @@ end
 _edges(x::AbstractVector{T}, n_bins::Int) where {T<:Real} =
     collect(1:(n_bins-1)) .* (maximum(x) - minimum(x)) / n_bins .+ minimum(x)
 
-function _transform(f::FittedHistogramTransformer, X::AbstractArray; apply_preprocessor::Bool=true)
+function _transform(f::FittedHistogramTransformer, X::Any; apply_preprocessor::Bool=true)
     if apply_preprocessor
         X = _transform(f.preprocessor, X)
     end
     n_bins = size(f.edges, 1) + 1
-    fX = zeros(Int, size(X, 1), n_bins * size(X, 2))
-    for j in 1:size(X, 2) # feature index
+    fX = zeros(Int, _size(X, 1), n_bins * _size(X, 2))
+    for j in 1:_size(X, 2) # feature index
         edges = f.edges[:,j]
         offset = (j-1) * n_bins
-        for i in 1:size(X, 1) # sample index
+        for i in 1:_size(X, 1) # sample index
             fX[i, offset + searchsortedfirst(edges, X[i,j])] = 1
         end
     end
